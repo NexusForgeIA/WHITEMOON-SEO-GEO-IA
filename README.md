@@ -101,8 +101,18 @@ Qué permite la interfaz:
   abre el diálogo de impresión del navegador con estilos de impresión limpios)
 - Historial de informes con filtro por nivel, ver/PDF/eliminar
 
-> La interfaz es para uso interno en local (`127.0.0.1`). No exponerla a
-> internet: los informes son confidenciales.
+### Despliegue en Render
+
+El repo incluye `render.yaml`: al crear un **Web Service Python** en Render
+apuntando a este repo se configura solo (build `pip install -r
+requirements.txt`, arranque con gunicorn). Configura la variable de entorno
+`AUDIT_PASSWORD` en el panel de Render — es la única barrera de acceso, usa
+una password fuerte.
+
+> Aviso: el disco de Render es efímero — los informes en `reports/` se
+> pierden en cada deploy/reinicio. Descarga el PDF o el Markdown de cada
+> auditoría al terminarla. Los informes son confidenciales: no compartas la
+> URL del servicio fuera de WhiteMoon.
 
 ## Cómo interpretar el score
 
