@@ -578,6 +578,17 @@ def check_aeo(a, site, ctx):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# BLOQUE 4b — MARKETING (informativo, no puntúa en el score)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def check_ads(a, site):
+    html = site["html"].decode("utf-8", errors="ignore")
+    pixel = "fbq(" in html or "connect.facebook.net" in html
+    a.add("ads", "meta_pixel", "Píxel de Meta Ads", "ok" if pixel else "warn",
+          0, 0, "Píxel Meta activo" if pixel else "Sin píxel Meta")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # BLOQUE 5 — PUNTUACIÓN GLOBAL Y NIVEL
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1065,6 +1076,14 @@ def render_report(audit, site, ctx):
     for bot in AI_BOTS:
         w("| %s | %s | %s |" % (bot, bot_motor[bot], estado_txt[ctx["bots"].get(bot, "implicit")]))
     w("")
+
+    # ── Marketing ──
+    w("### Marketing — Píxel de Meta Ads")
+    w("")
+    for c in [c for c in audit.checks if c["area"] == "ads"]:
+        detail = " — %s" % c["detail"] if c["detail"] else ""
+        w("- %s **%s**%s" % (STATUS_EMOJI[c["status"]], c["label"], detail))
+    w("")
     w("---")
     w("")
 
@@ -1158,6 +1177,31 @@ def render_report(audit, site, ctx):
         w("")
     w("¿Tienes preguntas? Solicita una consulta gratuita de 15 minutos: whitemoon.es/auditoria-ia")
     w("")
+
+    # ── Oportunidad Meta Ads (solo si la web no tiene píxel de Meta) ──
+    sin_pixel = any(c["id"] == "meta_pixel" and c["status"] == "warn" for c in audit.checks)
+    if sin_pixel:
+        w("---")
+        w("")
+        w("## OPORTUNIDAD: CAPTACIÓN CON META ADS")
+        w("")
+        w("Tu negocio no tiene Meta Ads activo. Tu competencia puede estar captando")
+        w("clientes en Facebook e Instagram mientras tú no apareces.")
+        w("")
+        w("**Simulación orientativa (presupuesto 300€/mes en Meta Ads):**")
+        w("- Alcance estimado: 15.000-40.000 personas/mes en tu zona")
+        w("- Leads estimados: 20-50 leads/mes")
+        w("- Coste por lead estimado: 6-15€")
+        w("")
+        w("**Pack Ads WhiteMoon — 599€/mes**")
+        w("- Gestión completa de Meta Ads (Facebook + Instagram)")
+        w("- Creatividades incluidas")
+        w("- Sin permanencia")
+        w("- Inversión en plataforma: a cargo del cliente (mínimo recomendado 800€/mes)")
+        w("")
+        w("Contacto: 643 199 580 | comercial@whitemoon.es")
+        w("")
+
     w("---")
     w("")
     w("*Auditoría GEO IA realizada por WhiteMoon · whitemoon.es*")
@@ -1241,6 +1285,7 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports"):
     check_robots(audit, site, ctx)
     check_geo(audit, site, ctx)
     check_aeo(audit, site, ctx)
+    check_ads(audit, site)
 
     report, score = render_report(audit, site, ctx)
 
