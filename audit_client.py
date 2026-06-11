@@ -875,13 +875,15 @@ PRODUCTOS = {
         "nombre": "Orion IA Agent",
         "setup": "999€", "mes": "199€/mes",
         "url": "whitemoon.es/orion-agent/",
-        "porque": "Un {sector} vive de su agenda: Orion atiende llamadas 24/7, da información, "
-                  "prepara presupuestos básicos y reserva citas sin perder ningún cliente.",
+        "porque": "Orion IA atiende a tus clientes 24/7 con voz natural, captura leads "
+                  "automáticamente y gestiona citas — sin operador humano. "
+                  "Es el comercial que nunca duerme.",
         "incluye": [
-            "Agente IA de voz que atiende llamadas 24/7",
-            "Gestión de citas y reservas integrada con la agenda",
-            "Mejoras GEO incluidas (señales locales + schema)",
-            "Resumen de cada llamada y derivación a humano cuando toca",
+            "Agente de voz 24/7 en español natural",
+            "Captura nombre, teléfono y motivo automáticamente",
+            "Notificación inmediata a tu WhatsApp",
+            "Gestión de citas sin intervención humana",
+            "Operativo en 5-7 días · Sin permanencia",
         ],
     },
     "core": {
@@ -925,16 +927,17 @@ PRODUCTO_POR_SECTOR = {
 
 
 def productos_recomendados(score, sector):
-    """Máximo 2 productos según score y sector."""
+    """Orion IA Agent siempre primero; el segundo según sector y score."""
     skey = sector_key(sector)
-    sectorial = PRODUCTO_POR_SECTOR.get(skey, "core")
-    if score < 50:
-        keys = ["spark"] + ([sectorial] if sectorial != "spark" else [])
-    elif score <= 75:
-        keys = ["orion"] + ([sectorial] if sectorial != "orion" else [])
+    if skey in ("gestoria", "abogados", "academia"):
+        segundo = "core_rag"
+    elif score < 50:
+        segundo = "spark"
     else:
-        keys = [sectorial]
-    return keys[:2]
+        segundo = PRODUCTO_POR_SECTOR.get(skey, "core")
+    if segundo == "orion":
+        segundo = "core_rag"
+    return ["orion", segundo]
 
 
 def plan_de_accion(audit):
