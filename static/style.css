@@ -16,6 +16,11 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* El atributo hidden debe ganar siempre, aunque la clase del elemento
+   defina display:flex (p. ej. .loading): sin esto el spinner del
+   loading seguía visible tras llegar el resultado */
+[hidden] { display: none !important; }
+
 html { scroll-behavior: smooth; }
 
 body {
