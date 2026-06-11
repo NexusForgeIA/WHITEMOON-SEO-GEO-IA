@@ -35,10 +35,12 @@ app.secret_key = hashlib.sha256(("whitemoon-audit-" + PASSWORD).encode()).hexdig
 app.permanent_session_lifetime = timedelta(hours=12)
 
 SECTORES = [
-    "clínica dental", "taller mecánico", "gestoría", "centro de estética",
-    "hostelería", "inmobiliaria", "farmacia", "despacho de abogados",
-    "podología", "academia", "gimnasio", "hotel", "e-commerce",
-    "fontanería", "otro",
+    "academia", "bodega y vinos", "centro de estética", "clínica dental",
+    "despacho de abogados", "e-commerce", "farmacia", "fontanería",
+    "gestoría", "gimnasio", "hostelería", "hotel", "inmobiliaria",
+    "marketing y publicidad", "muebles y decoración", "podología",
+    "servicio técnico", "taller mecánico", "transporte y logística",
+    "otro",
 ]
 
 # Solo ficheros generados por audit_client: sin rutas, sin caracteres raros

@@ -834,13 +834,37 @@ PRECIO_AUDITORIA = 899
 TASA_CONVERSION = 0.08
 VISITAS_POR_PUNTO = 0.5  # visitas/mes nuevas por cada punto de score recuperado
 
-# Ticket medio por sector (benchmarks conservadores)
-TICKET_SECTOR = {
-    "dental": 180, "taller": 120, "gestoria": 150, "estetica": 65,
-    "hosteleria": 35, "inmobiliaria": 300, "farmacia": 35, "abogados": 300,
-    "podologia": 45, "academia": 200, "gimnasio": 50, "hotel": 120,
-    "ecommerce": 95, "fontaneria": 250, "otro": 80,
+# Ticket medio por sector (clave: sector tal como se selecciona en el formulario)
+SECTOR_TICKETS = {
+    "clínica dental": 800,
+    "taller mecánico": 350,
+    "gestoría": 400,
+    "centro de estética": 250,
+    "hostelería": 180,
+    "inmobiliaria": 3500,
+    "farmacia": 120,
+    "despacho de abogados": 600,
+    "podología": 180,
+    "academia": 300,
+    "gimnasio": 500,
+    "hotel": 1200,
+    "e-commerce": 150,
+    "fontanería": 300,
+    "servicio técnico": 280,
+    "transporte y logística": 1500,
+    "marketing y publicidad": 2000,
+    "muebles y decoración": 900,
+    "bodega y vinos": 1800,
+    "otro": 400,
 }
+
+TICKET_DEFAULT = 400
+
+
+def ticket_sector(sector):
+    """Ticket medio del sector seleccionado (comparación sin acentos/mayúsculas)."""
+    normalizado = {_norm(k): v for k, v in SECTOR_TICKETS.items()}
+    return normalizado.get(_norm(sector), TICKET_DEFAULT)
 
 SECTOR_PATTERNS = [
     ("dental", ["dental", "dentist", "odont"]),
@@ -1133,8 +1157,7 @@ def render_report(audit, site, ctx):
     w("## 📈 ROI ESTIMADO")
     w("*(Impacto económico de corregir los errores detectados)*")
     w("")
-    skey = sector_key(sector)
-    ticket = TICKET_SECTOR[skey]
+    ticket = ticket_sector(sector)
     puntos_rec = max(score_potencial - score, 0)
     visitas = puntos_rec * VISITAS_POR_PUNTO
     ingresos = visitas * ticket * TASA_CONVERSION
