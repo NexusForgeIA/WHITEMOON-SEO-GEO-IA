@@ -227,8 +227,8 @@ select option { background: var(--bg2); color: var(--text); }
   align-items: center;
 }
 
-.gauge-wrap { text-align: center; position: relative; }
-.gauge-wrap svg { width: 100%; max-width: 240px; }
+.gauge-wrap { text-align: center; }
+.gauge-wrap svg { width: 100%; max-width: 240px; display: block; margin: 0 auto; }
 
 .gauge-bg { fill: none; stroke: var(--bg2); stroke-width: 14; stroke-linecap: round; }
 .gauge-fill {
@@ -239,15 +239,21 @@ select option { background: var(--bg2); color: var(--text); }
   transition: stroke-dashoffset 1.5s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.4s;
 }
 
-.gauge-score {
-  position: absolute;
-  left: 0; right: 0;
-  bottom: 18px;
-  font-size: 44px;
+/* Texto dentro del SVG: text-anchor=middle lo centra siempre,
+   con 1, 2 o 3 cifras y a cualquier tamaño de pantalla */
+.gauge-num {
+  fill: var(--text);
+  font-family: "Sora", system-ui, sans-serif;
+  font-size: 42px;
   font-weight: 800;
-  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
-.gauge-score small { font-size: 15px; color: var(--muted); font-weight: 600; }
+.gauge-sub {
+  fill: var(--muted);
+  font-family: "Sora", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+}
 
 .nivel-pill {
   display: inline-block;
