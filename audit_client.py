@@ -1276,23 +1276,51 @@ def render_report(audit, site, ctx):
     w("## 📊 EVIDENCIA EN MOTORES DE IA")
     w("*(Lo que diferencia esta auditoría — ninguna agencia SEO tradicional lo hace)*")
     w("")
-    w("**Queries exactas para verificar ahora mismo:**")
-    w("Busca estas frases en ChatGPT, Grok y Perplexity y comprueba si apareces:")
-    w("")
-    w('- "%s en %s"' % (sector, ciudad))
-    w('- "mejor %s %s"' % (sector, ciudad))
-    w('- "%s recomendado %s"' % (sector, ciudad))
-    w('- "%s cerca de %s"' % (sector, ciudad))
-    w("")
-    w("**Lo que verás si los errores críticos no se corrigen:**")
-    w("")
-    w("❌ %s NO aparecerá en las respuestas de IA" % nombre)
-    w("✅ Competidores con GEO/AEO implementado SÍ aparecerán antes")
-    w("")
-    w("**Por qué ocurre:**")
-    w("")
-    w(_explicacion_llm(audit, ctx, nombre, sector, ciudad))
-    w("")
+    queries = ['- "%s en %s"' % (sector, ciudad),
+               '- "mejor %s %s"' % (sector, ciudad),
+               '- "%s recomendado %s"' % (sector, ciudad),
+               '- "%s cerca de %s"' % (sector, ciudad)]
+    if score >= 90:
+        w("✅ Tu web está correctamente optimizada para aparecer en ChatGPT, Grok y Perplexity.")
+        w("")
+        w("**Queries con las que deberías aparecer ahora mismo:**")
+        w("")
+        for q in queries:
+            w(q)
+        w("")
+        w("Búscalas en ChatGPT y Grok para verificar tu posición. Si no apareces aún, "
+          "es cuestión de tiempo — los crawlers de IA actualizan su índice cada 30-90 días.")
+        w("")
+        w("**Lo que tienes que mantener:** actualizar el contenido FAQ periódicamente y "
+          "no eliminar las señales GEO/AEO que ya tienes implementadas.")
+        w("")
+    elif score >= 60:
+        w("Tu web tiene base pero hay gaps que impiden aparecer de forma consistente "
+          "en motores de IA.")
+        w("")
+        w("**Queries donde deberías aparecer pero puede que no aparezcas:**")
+        w("")
+        for q in queries:
+            w(q)
+        w("")
+        w("Corrige los errores del plan de acción y vuelve a auditar en 30 días.")
+        w("")
+    else:
+        w("**Queries exactas para verificar ahora mismo:**")
+        w("Busca estas frases en ChatGPT, Grok y Perplexity y comprueba si apareces:")
+        w("")
+        for q in queries:
+            w(q)
+        w("")
+        w("**Lo que verás si los errores críticos no se corrigen:**")
+        w("")
+        w("❌ %s NO aparecerá en las respuestas de IA" % nombre)
+        w("✅ Competidores con GEO/AEO implementado SÍ aparecerán antes")
+        w("")
+        w("**Por qué ocurre:**")
+        w("")
+        w(_explicacion_llm(audit, ctx, nombre, sector, ciudad))
+        w("")
     w("---")
     w("")
 
