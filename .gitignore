@@ -1,0 +1,12 @@
+# Informes de clientes — confidenciales, NUNCA commitear
+reports/*
+!reports/.gitkeep
+
+# CSVs con datos de clientes
+clientes*.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
