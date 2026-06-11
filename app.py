@@ -25,6 +25,8 @@ from audit_client import AuditError, run_audit_full
 
 BASE = Path(__file__).resolve().parent
 REPORTS_DIR = BASE / "reports"
+# En import (no solo en __main__) para que exista también bajo gunicorn
+REPORTS_DIR.mkdir(exist_ok=True)
 PASSWORD = os.environ.get("AUDIT_PASSWORD", "whitemoon2026")
 
 app = Flask(__name__)
@@ -220,6 +222,6 @@ def export_pdf(filename):
 
 
 if __name__ == "__main__":
-    REPORTS_DIR.mkdir(exist_ok=True)
-    print("🌙 WhiteMoon — Auditoría GEO IA · http://localhost:5000")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    print("🌙 WhiteMoon — Auditoría GEO IA · http://localhost:%d" % port)
+    app.run(host="0.0.0.0", port=port, debug=False)
