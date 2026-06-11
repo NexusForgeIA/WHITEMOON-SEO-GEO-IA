@@ -54,6 +54,11 @@
     "Generando informe..."
   ];
   var loadingTimer = null;
+  var wakeTimer = null;
+
+  // Plan gratuito de Render: el servidor puede tardar ~50s en despertar
+  var AUDIT_TIMEOUT_MS = 120000;
+  var WAKE_MSG = "El servidor está despertando, puede tardar hasta 60 segundos la primera vez...";
 
   var NIVEL_COLOR = {
     "Crítico": "#ff4d6d",
@@ -113,10 +118,20 @@
         loadingMsg.style.opacity = 1;
       }, 250);
     }, 1700);
+    // Más de 10s sin respuesta → probablemente cold start de Render
+    wakeTimer = setTimeout(function () {
+      clearInterval(loadingTimer);
+      loadingMsg.style.opacity = 0;
+      setTimeout(function () {
+        loadingMsg.textContent = WAKE_MSG;
+        loadingMsg.style.opacity = 1;
+      }, 250);
+    }, 10000);
   }
 
   function stopLoading() {
     clearInterval(loadingTimer);
+    clearTimeout(wakeTimer);
     loading.hidden = true;
     btnAudit.disabled = false;
   }
@@ -135,13 +150,19 @@
 
     startLoading();
 
+    // Timeout de 120s vía AbortController (fetch no tiene timeout nativo)
+    var controller = new AbortController();
+    var abortTimer = setTimeout(function () { controller.abort(); }, AUDIT_TIMEOUT_MS);
+
     fetch("/audit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
       .then(function (res) {
+        clearTimeout(abortTimer);
         stopLoading();
         if (!res.body.ok) {
           showError(res.body.error || "Error desconocido (HTTP " + res.status + ")");
@@ -151,8 +172,16 @@
         renderResult(res.body);
       })
       .catch(function (err) {
+        clearTimeout(abortTimer);
         stopLoading();
-        showError("No se pudo conectar con el servidor: " + err.message);
+        if (err.name === "AbortError") {
+          showError("La auditoría ha tardado más de 120 segundos y se ha cancelado. " +
+                    "Vuelve a intentarlo en un momento.");
+        } else if (/failed to fetch|networkerror|load failed/i.test(err.message || "")) {
+          showError("El servidor está iniciando. Espera 30 segundos y vuelve a intentarlo.");
+        } else {
+          showError("No se pudo conectar con el servidor: " + err.message);
+        }
       });
   });
 
