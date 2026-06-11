@@ -12,6 +12,8 @@ Uso:
 Genera: reports/audit-{dominio}-{fecha}.md
 """
 
+import base64
+import io
 import json
 import re
 import sys
@@ -753,6 +755,136 @@ AREA_TITLES = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# GRÁFICAS DEL INFORME (matplotlib → PNG base64 embebido en el markdown)
+# ──────────────────────────────────────────────────────────────────────────────
+
+CHART_BG = "#0e0e16"
+CHART_FG = "#f0f0f5"
+CHART_TRACK = "#1e1e2e"
+CHART_GREEN = "#00d4aa"
+CHART_GOLD = "#f5c842"
+CHART_RED = "#ff4444"
+CHART_DPI = 96
+
+
+def _color_pct(pct):
+    return CHART_GREEN if pct >= 0.8 else (CHART_GOLD if pct >= 0.5 else CHART_RED)
+
+
+def _fig_b64(plt, fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=CHART_DPI, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def generate_charts(audit_data):
+    """Genera las 3 gráficas del informe como PNG en base64.
+
+    audit_data: seo/geo/aeo y sus _max, score, ingresos_mes y los contadores
+    checks_ok/checks_warn/checks_error.
+    Devuelve {'areas', 'roi', 'checks'} → string base64 de cada PNG.
+    Si matplotlib no está disponible devuelve {} y el informe sale sin gráficas.
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return {}
+
+    # Los hatch (texturas) diferencian las series también en impresión B/N
+    rc = {
+        "font.family": "monospace",
+        "text.color": CHART_FG,
+        "axes.labelcolor": CHART_FG,
+        "xtick.color": CHART_FG,
+        "ytick.color": CHART_FG,
+        "axes.edgecolor": CHART_TRACK,
+        "axes.titlecolor": CHART_FG,
+        "hatch.linewidth": 1.0,
+    }
+    charts = {}
+    with matplotlib.rc_context(rc):
+
+        # ── 1. Puntuación por área (barras horizontales, 600x300) ──
+        fig, ax = plt.subplots(figsize=(600 / CHART_DPI, 300 / CHART_DPI), dpi=CHART_DPI)
+        fig.patch.set_facecolor(CHART_BG)
+        ax.set_facecolor(CHART_BG)
+        areas = [  # de abajo arriba: SEO queda en la primera fila visible
+            ("AEO", audit_data["aeo"], audit_data["aeo_max"], ".."),
+            ("GEO", audit_data["geo"], audit_data["geo_max"], "xx"),
+            ("SEO Técnico", audit_data["seo"], audit_data["seo_max"], "//"),
+        ]
+        ys = range(len(areas))
+        ax.barh(ys, [a[2] for a in areas], color=CHART_TRACK, height=0.58)
+        for y, (_, pts, maxp, hatch) in zip(ys, areas):
+            ax.barh(y, pts, color=_color_pct(pts / maxp if maxp else 1), height=0.58,
+                    hatch=hatch, edgecolor=CHART_BG, linewidth=0.8)
+            ax.text(maxp + 1, y, "%s/%s" % (fmt_pts(pts), fmt_pts(maxp)),
+                    va="center", fontsize=9, color=CHART_FG)
+        ax.set_yticks(list(ys))
+        ax.set_yticklabels([a[0] for a in areas], fontsize=9)
+        ax.set_xticks([])
+        ax.set_xlim(0, max(a[2] for a in areas) * 1.22)
+        ax.tick_params(length=0)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        ax.set_title("Puntuación por área", fontsize=12, pad=12)
+        fig.tight_layout()
+        charts["areas"] = _fig_b64(plt, fig)
+
+        # ── 2. ROI comparativo (barras verticales, 600x350) ──
+        fig, ax = plt.subplots(figsize=(600 / CHART_DPI, 350 / CHART_DPI), dpi=CHART_DPI)
+        fig.patch.set_facecolor(CHART_BG)
+        ax.set_facecolor(CHART_BG)
+        potencial = audit_data["ingresos_mes"]
+        actual = potencial * 0.2  # estimación conservadora sin mejoras
+        bars = ax.bar([0, 1], [actual, potencial], width=0.5,
+                      color=[CHART_RED, CHART_GREEN], edgecolor=CHART_BG, linewidth=0.8)
+        bars[0].set_hatch("xx")
+        bars[1].set_hatch("//")
+        tope = max(potencial, 1)
+        for bar, val in zip(bars, (actual, potencial)):
+            ax.text(bar.get_x() + bar.get_width() / 2, val + tope * 0.03,
+                    "%d €/mes" % round(val), ha="center", fontsize=10, color=CHART_FG)
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(["Situación actual", "Con mejoras aplicadas"], fontsize=10)
+        ax.set_yticks([])
+        ax.set_ylim(0, tope * 1.2)
+        ax.tick_params(length=0)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        ax.set_title("Impacto económico estimado (€/mes)", fontsize=12, pad=12)
+        fig.tight_layout()
+        charts["roi"] = _fig_b64(plt, fig)
+
+        # ── 3. Resumen de checks (donut, 400x400) ──
+        fig, ax = plt.subplots(figsize=(400 / CHART_DPI, 400 / CHART_DPI), dpi=CHART_DPI)
+        fig.patch.set_facecolor(CHART_BG)
+        ax.set_facecolor(CHART_BG)
+        datos = [("OK", audit_data["checks_ok"], CHART_GREEN, "//"),
+                 ("Warning", audit_data["checks_warn"], CHART_GOLD, ".."),
+                 ("Fallo", audit_data["checks_error"], CHART_RED, "xx")]
+        datos = [d for d in datos if d[1] > 0] or [("Sin checks", 1, CHART_TRACK, "")]
+        wedges, _ = ax.pie([d[1] for d in datos], colors=[d[2] for d in datos],
+                           startangle=90, counterclock=False,
+                           wedgeprops=dict(width=0.32, edgecolor=CHART_BG, linewidth=1.5))
+        for wedge, d in zip(wedges, datos):
+            wedge.set_hatch(d[3])
+        ax.text(0, 0.05, "%d/100" % audit_data["score"], ha="center", va="center",
+                fontsize=20, fontweight="bold", color=CHART_FG)
+        ax.text(0, -0.17, "score", ha="center", va="center", fontsize=9, color=CHART_FG)
+        ax.set_title("Resumen de checks", fontsize=12, pad=10)
+        fig.legend(wedges, ["%s (%d)" % (d[0], d[1]) for d in datos],
+                   loc="lower center", ncol=3, frameon=False, fontsize=8)
+        fig.subplots_adjust(bottom=0.12, top=0.88)
+        charts["checks"] = _fig_b64(plt, fig)
+
+    return charts
+
+
 def estado_emoji(pts, maxp):
     ratio = pts / maxp if maxp else 1
     return "✅" if ratio >= 0.85 else ("🟢" if ratio >= 0.7 else ("⚠️" if ratio >= 0.5 else "❌"))
@@ -1000,8 +1132,31 @@ def render_report(audit, site, ctx):
     ganancia = round(sum(p["pts"] for p in plan))
     score_potencial = min(100, score + ganancia)
 
+    ticket = ticket_sector(sector)
+    puntos_rec = max(score_potencial - score, 0)
+    visitas = puntos_rec * VISITAS_POR_PUNTO
+    ingresos = visitas * ticket * TASA_CONVERSION
+
+    try:
+        charts = generate_charts({
+            "seo": seo_pts, "seo_max": seo_max,
+            "geo": geo_pts, "geo_max": geo_max,
+            "aeo": aeo_pts, "aeo_max": aeo_max,
+            "score": score, "ingresos_mes": ingresos,
+            "checks_ok": sum(1 for c in audit.checks if c["status"] == "ok"),
+            "checks_warn": sum(1 for c in audit.checks if c["status"] == "warn"),
+            "checks_error": sum(1 for c in audit.checks if c["status"] == "error"),
+        })
+    except Exception:
+        charts = {}  # las gráficas nunca deben impedir generar el informe
+
     L = []
     w = L.append
+
+    def w_chart(key, alt):
+        if charts.get(key):
+            w("![%s](data:image/png;base64,%s)" % (alt, charts[key]))
+            w("")
 
     # ── Cabecera ──
     w("# Auditoría GEO IA — %s" % nombre)
@@ -1024,6 +1179,7 @@ def render_report(audit, site, ctx):
     w("| GEO — Visibilidad local IA | %s/%s | %s |" % (fmt_pts(geo_pts), fmt_pts(geo_max), estado_emoji(geo_pts, geo_max)))
     w("| AEO — Respuestas en IA | %s/%s | %s |" % (fmt_pts(aeo_pts), fmt_pts(aeo_max), estado_emoji(aeo_pts, aeo_max)))
     w("")
+    w_chart("checks", "Resumen de checks")
     w("**En una frase:** %s" % frase_resumen(score, nombre, sector, ciudad))
     w("")
     problemas = top_problemas(audit)
@@ -1036,6 +1192,8 @@ def render_report(audit, site, ctx):
     w("")
     w("---")
     w("")
+
+    w_chart("areas", "Puntuación por área")
 
     # ── Análisis técnico ──
     w("## 🔬 ANÁLISIS TÉCNICO COMPLETO")
@@ -1157,10 +1315,6 @@ def render_report(audit, site, ctx):
     w("## 📈 ROI ESTIMADO")
     w("*(Impacto económico de corregir los errores detectados)*")
     w("")
-    ticket = ticket_sector(sector)
-    puntos_rec = max(score_potencial - score, 0)
-    visitas = puntos_rec * VISITAS_POR_PUNTO
-    ingresos = visitas * ticket * TASA_CONVERSION
     if ingresos > 0:
         meses = PRECIO_AUDITORIA / ingresos
         w("Con una tasa de conversión estimada del %d%% (visita desde IA → cliente):"
@@ -1173,6 +1327,8 @@ def render_report(audit, site, ctx):
         w("| Ingresos adicionales estimados/mes | %d€ |" % round(ingresos))
         w("| Meses para recuperar la auditoría (%d€) | %s meses |"
           % (PRECIO_AUDITORIA, fmt_pts(round(meses, 1))))
+        w("")
+        w_chart("roi", "Impacto económico estimado")
     else:
         w("La web ya alcanza el máximo de los checks puntuables: el retorno aquí "
           "está en mantener la posición frente a competidores que están implementando GEO/AEO.")
