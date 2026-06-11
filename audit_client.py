@@ -1029,8 +1029,9 @@ PRODUCTOS = {
         "nombre": "Spark",
         "setup": "499€", "mes": "199€/mes",
         "url": "whitemoon.es/spark/",
-        "porque": "El primer paso para que un {sector} de {ciudad} sea visible para la IA "
-                  "y atienda clientes por chat: rápido de implantar y con las bases GEO/AEO incluidas.",
+        "porque": "Ideal para negocios de {sector} que quieren dar el primer paso en {ciudad}: "
+                  "visibilidad para la IA y atención por chat, rápido de implantar y con las "
+                  "bases GEO/AEO incluidas.",
         "incluye": [
             "Chatbot IA entrenado con la información del negocio",
             "Captura de leads 24/7 con aviso inmediato",
@@ -1042,9 +1043,9 @@ PRODUCTOS = {
         "nombre": "Orion IA Agent",
         "setup": "999€", "mes": "199€/mes",
         "url": "whitemoon.es/orion-agent/",
-        "porque": "Orion IA atiende a tus clientes 24/7 con voz natural, captura leads "
-                  "automáticamente y gestiona citas — sin operador humano. "
-                  "Es el comercial que nunca duerme.",
+        "porque": "Ideal para negocios de {sector} que quieren atender clientes 24/7 sin "
+                  "operador humano: Orion IA captura leads automáticamente y gestiona citas "
+                  "en español natural.",
         "incluye": [
             "Agente de voz 24/7 en español natural",
             "Captura nombre, teléfono y motivo automáticamente",
@@ -1057,8 +1058,9 @@ PRODUCTOS = {
         "nombre": "Core",
         "setup": "1.800€", "mes": "opcional (mantenimiento)",
         "url": "whitemoon.es/core/",
-        "porque": "Para un {sector} que necesita una base sólida en {ciudad}: web nueva con "
-                  "GEO/AEO de serie y chat IA integrado desde el primer día.",
+        "porque": "Ideal para negocios de {sector} que necesitan una base digital sólida en "
+                  "{ciudad}: web nueva con GEO/AEO de serie y Orion IA integrado desde el "
+                  "primer día.",
         "incluye": [
             "Web nueva optimizada GEO/AEO desde el diseño",
             "Schema completo, llms.txt y señales de geolocalización",
@@ -1070,8 +1072,9 @@ PRODUCTOS = {
         "nombre": "Core RAG",
         "setup": "3.200€", "mes": "opcional (mantenimiento)",
         "url": "whitemoon.es/core-rag/",
-        "porque": "Un {sector} responde las mismas preguntas cada día: Core RAG convierte su "
-                  "documentación en respuestas instantáneas, fiables y citables.",
+        "porque": "Ideal para negocios de {sector} que responden las mismas preguntas cada "
+                  "día: Core RAG convierte su documentación en respuestas instantáneas, "
+                  "fiables y citables.",
         "incluye": [
             "IA que responde con la documentación real del negocio (RAG)",
             "Base de conocimiento privada y actualizable",
@@ -1347,7 +1350,7 @@ def render_report(audit, site, ctx):
         p = PRODUCTOS[key]
         w("### %s" % p["nombre"])
         w("**Setup:** %s · **Mensualidad:** %s · **Sin permanencia**" % (p["setup"], p["mes"]))
-        w("**Por qué para %s:** %s" % (sector, p["porque"].format(sector=sector, ciudad=ciudad)))
+        w("**Por qué para tu negocio:** %s" % p["porque"].format(sector=sector, ciudad=ciudad))
         w("**Incluye:**")
         for feat in p["incluye"]:
             w("- %s" % feat)
@@ -1376,7 +1379,7 @@ def render_report(audit, site, ctx):
         w("- Gestión completa de Meta Ads (Facebook + Instagram)")
         w("- Creatividades incluidas")
         w("- Sin permanencia")
-        w("- Inversión en plataforma: a cargo del cliente (mínimo recomendado 800€/mes)")
+        w("- Inversión en plataforma: a cargo del cliente (mínimo recomendado 300€/mes)")
         w("")
         w("Contacto: 643 199 580 | comercial@whitemoon.es")
         w("")
