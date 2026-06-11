@@ -815,6 +815,128 @@ IMPACT_RANK = {"Alto": 0, "Medio": 1, "Bajo": 2}
 EFFORT_RANK = {"Bajo": 0, "Medio": 1, "Alto": 2}
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# ROI y productos WhiteMoon
+# ──────────────────────────────────────────────────────────────────────────────
+
+PRECIO_AUDITORIA = 899
+TASA_CONVERSION = 0.08
+VISITAS_POR_PUNTO = 0.5  # visitas/mes nuevas por cada punto de score recuperado
+
+# Ticket medio por sector (benchmarks conservadores)
+TICKET_SECTOR = {
+    "dental": 180, "taller": 120, "gestoria": 150, "estetica": 65,
+    "hosteleria": 35, "inmobiliaria": 300, "farmacia": 35, "abogados": 300,
+    "podologia": 45, "academia": 200, "gimnasio": 50, "hotel": 120,
+    "ecommerce": 95, "fontaneria": 250, "otro": 80,
+}
+
+SECTOR_PATTERNS = [
+    ("dental", ["dental", "dentist", "odont"]),
+    ("taller", ["taller", "mecanic"]),
+    ("gestoria", ["gestor", "asesor"]),
+    ("estetica", ["estet", "belleza", "peluquer"]),
+    ("hosteleria", ["hostel", "restaur", "cafeter", "bar"]),
+    ("inmobiliaria", ["inmobil"]),
+    ("farmacia", ["farmac", "parafarm"]),
+    ("abogados", ["abogad", "jurid", "legal"]),
+    ("podologia", ["podolog"]),
+    ("academia", ["academ", "formaci", "escuela"]),
+    ("gimnasio", ["gimnas", "fitness", "crossfit"]),
+    ("hotel", ["hotel", "alojam", "hostal", "apartament"]),
+    ("ecommerce", ["ecommerce", "e-commerce", "tienda online", "comercio electr"]),
+    ("fontaneria", ["fontaner"]),
+]
+
+
+def sector_key(sector):
+    s = _norm(sector)
+    for key, pats in SECTOR_PATTERNS:
+        if any(p in s for p in pats):
+            return key
+    return "otro"
+
+
+PRODUCTOS = {
+    "spark": {
+        "nombre": "Spark",
+        "setup": "499€", "mes": "199€/mes",
+        "url": "whitemoon.es/spark/",
+        "porque": "El primer paso para que un {sector} de {ciudad} sea visible para la IA "
+                  "y atienda clientes por chat: rápido de implantar y con las bases GEO/AEO incluidas.",
+        "incluye": [
+            "Chatbot IA entrenado con la información del negocio",
+            "Captura de leads 24/7 con aviso inmediato",
+            "Implementación GEO/AEO básica (schema, llms.txt, señales locales)",
+            "Panel de conversaciones y métricas",
+        ],
+    },
+    "orion": {
+        "nombre": "Orion IA Agent",
+        "setup": "999€", "mes": "199€/mes",
+        "url": "whitemoon.es/orion-agent/",
+        "porque": "Un {sector} vive de su agenda: Orion atiende llamadas 24/7, da información, "
+                  "prepara presupuestos básicos y reserva citas sin perder ningún cliente.",
+        "incluye": [
+            "Agente IA de voz que atiende llamadas 24/7",
+            "Gestión de citas y reservas integrada con la agenda",
+            "Mejoras GEO incluidas (señales locales + schema)",
+            "Resumen de cada llamada y derivación a humano cuando toca",
+        ],
+    },
+    "core": {
+        "nombre": "Core",
+        "setup": "1.800€", "mes": "opcional (mantenimiento)",
+        "url": "whitemoon.es/core/",
+        "porque": "Para un {sector} que necesita una base sólida en {ciudad}: web nueva con "
+                  "GEO/AEO de serie y chat IA integrado desde el primer día.",
+        "incluye": [
+            "Web nueva optimizada GEO/AEO desde el diseño",
+            "Schema completo, llms.txt y señales de geolocalización",
+            "Chat IA (Orion IA) integrado en la web",
+            "Analítica de visibilidad en buscadores y motores de IA",
+        ],
+    },
+    "core_rag": {
+        "nombre": "Core RAG",
+        "setup": "3.200€", "mes": "opcional (mantenimiento)",
+        "url": "whitemoon.es/core-rag/",
+        "porque": "Un {sector} responde las mismas preguntas cada día: Core RAG convierte su "
+                  "documentación en respuestas instantáneas, fiables y citables.",
+        "incluye": [
+            "IA que responde con la documentación real del negocio (RAG)",
+            "Base de conocimiento privada y actualizable",
+            "Respuestas consistentes para clientes y equipo",
+            "Integración en web y canales de atención",
+        ],
+    },
+}
+
+# Producto por sector cuando la base técnica ya es buena (score > 75)
+PRODUCTO_POR_SECTOR = {
+    "dental": "orion", "estetica": "orion", "podologia": "orion", "gimnasio": "orion",
+    "gestoria": "core_rag", "abogados": "core_rag", "academia": "core_rag",
+    "hosteleria": "spark", "hotel": "spark",
+    "inmobiliaria": "core",
+    "taller": "orion", "fontaneria": "orion",
+    "ecommerce": "spark", "farmacia": "spark",
+    "otro": "core",
+}
+
+
+def productos_recomendados(score, sector):
+    """Máximo 2 productos según score y sector."""
+    skey = sector_key(sector)
+    sectorial = PRODUCTO_POR_SECTOR.get(skey, "core")
+    if score < 50:
+        keys = ["spark"] + ([sectorial] if sectorial != "spark" else [])
+    elif score <= 75:
+        keys = ["orion"] + ([sectorial] if sectorial != "orion" else [])
+    else:
+        keys = [sectorial]
+    return keys[:2]
+
+
 def plan_de_accion(audit):
     lost = {c["id"]: c["max"] - c["points"] for c in audit.failed()}
     plan = []
@@ -824,20 +946,6 @@ def plan_de_accion(audit):
             plan.append({"accion": accion, "impacto": impacto, "esfuerzo": esfuerzo, "pts": pts})
     plan.sort(key=lambda p: (IMPACT_RANK[p["impacto"]], EFFORT_RANK[p["esfuerzo"]], -p["pts"]))
     return plan[:5]
-
-
-def tabla_implementacion(audit, score):
-    failed_ids = {c["id"] for c in audit.failed()}
-    rows = []
-    if failed_ids & {"jsonld", "org", "lb_complete", "faqpage", "breadcrumb", "aeo_faq_schema"}:
-        rows.append(("Schema LocalBusiness + FAQPage + BreadcrumbList", "Bajo", "Alto", "200-400€"))
-    if failed_ids & {"llms_txt", "geo_region", "geo_place", "icbm", "geocoords"}:
-        rows.append(("llms.txt + señales GEO completas", "Bajo", "Alto", "150-300€"))
-    if score < 50:
-        rows.append(("Rediseño web con IA integrada", "Alto", "Muy alto", "Pack Core — 1.800€"))
-    rows.append(("Agente IA de voz para atención 24/7 (complemento)", "Alto", "Muy alto", "Pack Orion IA Agent — 999€"))
-    rows.append(("RAG sobre documentación del negocio (complemento)", "Alto", "Alto", "Pack Core RAG — 3.200€"))
-    return rows
 
 
 def render_report(audit, site, ctx):
@@ -999,14 +1107,53 @@ def render_report(audit, site, ctx):
     w("---")
     w("")
 
-    # ── Implementación ──
-    w("## 💶 IMPLEMENTACIÓN")
-    w("*(Coste estimado de mejoras)*")
+    # ── ROI estimado ──
+    w("## 📈 ROI ESTIMADO")
+    w("*(Impacto económico de corregir los errores detectados)*")
     w("")
-    w("| Mejora detectada | Dificultad | Impacto | Coste estimado |")
-    w("|-----------------|-----------|---------|----------------|")
-    for mejora, dif, imp, coste in tabla_implementacion(audit, score):
-        w("| %s | %s | %s | %s |" % (mejora, dif, imp, coste))
+    skey = sector_key(sector)
+    ticket = TICKET_SECTOR[skey]
+    puntos_rec = max(score_potencial - score, 0)
+    visitas = puntos_rec * VISITAS_POR_PUNTO
+    ingresos = visitas * ticket * TASA_CONVERSION
+    if ingresos > 0:
+        meses = PRECIO_AUDITORIA / ingresos
+        w("Con una tasa de conversión estimada del %d%% (visita desde IA → cliente):"
+          % int(TASA_CONVERSION * 100))
+        w("")
+        w("| Métrica | Estimación |")
+        w("|---------|-----------|")
+        w("| Visitas nuevas desde IA/mes | %s |" % fmt_pts(visitas))
+        w("| Ticket medio sector | %d€ |" % ticket)
+        w("| Ingresos adicionales estimados/mes | %d€ |" % round(ingresos))
+        w("| Meses para recuperar la auditoría (%d€) | %s meses |"
+          % (PRECIO_AUDITORIA, fmt_pts(round(meses, 1))))
+    else:
+        w("La web ya alcanza el máximo de los checks puntuables: el retorno aquí "
+          "está en mantener la posición frente a competidores que están implementando GEO/AEO.")
+    w("")
+    w("*Estimación conservadora basada en benchmarks del sector. Los resultados "
+      "reales dependen de la implementación y competencia local.*")
+    w("")
+    w("---")
+    w("")
+
+    # ── Soluciones WhiteMoon ──
+    w("## 💡 SOLUCIONES WHITEMOON RECOMENDADAS")
+    w("*(Productos específicos para %s en %s)*" % (sector, ciudad))
+    w("")
+    for key in productos_recomendados(score, sector):
+        p = PRODUCTOS[key]
+        w("### %s" % p["nombre"])
+        w("**Setup:** %s · **Mensualidad:** %s · **Sin permanencia**" % (p["setup"], p["mes"]))
+        w("**Por qué para %s:** %s" % (sector, p["porque"].format(sector=sector, ciudad=ciudad)))
+        w("**Incluye:**")
+        for feat in p["incluye"]:
+            w("- %s" % feat)
+        w("")
+        w("→ Más información: %s" % p["url"])
+        w("")
+    w("¿Tienes preguntas? Solicita una consulta gratuita de 15 minutos: whitemoon.es/auditoria-ia")
     w("")
     w("---")
     w("")
