@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auditoría GEO IA — WhiteMoon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo-moon"></span>
+    <span class="app-name">WhiteMoon</span>
+    <span class="sep">·</span>
+    <span>Auditoría GEO IA</span>
+    <span class="badge-internal">HERRAMIENTA INTERNA</span>
+  </div>
+  <a class="btn ghost" href="{{ url_for('reports_list') }}">Ver informes anteriores &rarr;</a>
+</header>
+
+<main>
+
+  <section class="card form-card">
+    <h1>Auditar web de cliente</h1>
+    <p class="subtitle">Analiza SEO técnico, señales GEO y AEO para motores de IA. Genera el informe profesional en Markdown.</p>
+
+    <form id="audit-form" novalidate>
+      <div class="form-grid">
+        <div class="full">
+          <label for="f-url">URL del cliente</label>
+          <input type="url" id="f-url" placeholder="https://cliente.es" autocomplete="off" required>
+          <div class="field-error" id="err-url"></div>
+        </div>
+        <div>
+          <label for="f-nombre">Nombre del cliente</label>
+          <input type="text" id="f-nombre" placeholder="Clínica Dental Sonrisa" required>
+          <div class="field-error" id="err-nombre"></div>
+        </div>
+        <div>
+          <label for="f-ciudad">Ciudad</label>
+          <input type="text" id="f-ciudad" placeholder="Majadahonda" required>
+          <div class="field-error" id="err-ciudad"></div>
+        </div>
+        <div class="full">
+          <label for="f-sector">Sector</label>
+          <select id="f-sector">
+            {% for s in sectores %}
+            <option value="{{ s }}">{{ s|capitalize }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" id="f-sector-otro" placeholder="Escribe el sector (ej: cerrajería)" style="margin-top:10px" hidden>
+          <div class="field-error" id="err-sector"></div>
+        </div>
+        <div class="full">
+          <button type="submit" class="btn primary big" id="btn-audit">Auditar ahora</button>
+        </div>
+      </div>
+    </form>
+
+    <div class="loading" id="loading" hidden>
+      <div class="spinner"></div>
+      <p id="loading-msg">Descargando web del cliente...</p>
+    </div>
+
+    <div class="error-box" id="error-box" hidden></div>
+  </section>
+
+  <section class="card" id="result" hidden>
+    <div class="result-header">
+      <div class="gauge-wrap">
+        <svg viewBox="0 0 200 112" aria-hidden="true">
+          <path class="gauge-bg"   d="M14 100 A86 86 0 0 1 186 100"></path>
+          <path class="gauge-fill" id="gauge-fill" d="M14 100 A86 86 0 0 1 186 100"></path>
+        </svg>
+        <div class="gauge-score"><span id="score-counter">0</span><small>/100</small></div>
+        <span class="nivel-pill" id="nivel-pill"></span>
+      </div>
+      <div>
+        <p class="frase" id="frase"></p>
+        <div class="bars">
+          <div class="bar-row">
+            <span class="bar-label">SEO técnico</span>
+            <div class="bar-track"><div class="bar-fill" id="bar-seo"></div></div>
+            <span class="bar-pts" id="pts-seo"></span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">GEO — Visibilidad local IA</span>
+            <div class="bar-track"><div class="bar-fill geo" id="bar-geo"></div></div>
+            <span class="bar-pts" id="pts-geo"></span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">AEO — Respuestas en IA</span>
+            <div class="bar-track"><div class="bar-fill aeo" id="bar-aeo"></div></div>
+            <span class="bar-pts" id="pts-aeo"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-actions">
+      <a class="btn primary" id="btn-ver" href="#">Ver informe completo</a>
+      <button class="btn" id="btn-pdf">Descargar PDF</button>
+      <button class="btn" id="btn-copy">Copiar Markdown</button>
+    </div>
+
+    <div id="problemas-wrap" hidden>
+      <h2 class="section-title">Problemas más urgentes</h2>
+      <ul class="problema-list" id="problemas"></ul>
+    </div>
+
+    <div id="errores-wrap" hidden>
+      <h2 class="section-title">Errores críticos (<span id="err-count"></span>)</h2>
+      <ul class="issue-list" id="errores"></ul>
+      <button class="toggle-link" id="toggle-err" hidden></button>
+    </div>
+
+    <div id="warnings-wrap" hidden>
+      <h2 class="section-title">Warnings (<span id="warn-count"></span>)</h2>
+      <ul class="issue-list" id="warnings"></ul>
+      <button class="toggle-link" id="toggle-warn" hidden></button>
+    </div>
+  </section>
+
+</main>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Informes — Auditoría GEO IA · WhiteMoon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo-moon"></span>
+    <span class="app-name">WhiteMoon</span>
+    <span class="sep">·</span>
+    <span>Auditoría GEO IA</span>
+    <span class="badge-internal">HERRAMIENTA INTERNA</span>
+  </div>
+  <a class="btn primary" href="{{ url_for('index') }}">Nueva auditoría</a>
+</header>
+
+<main class="wide">
+  <section class="card">
+    <div class="table-toolbar">
+      <h1 style="font-size:20px">Informes anteriores</h1>
+      <select id="filter-nivel" aria-label="Filtrar por nivel">
+        <option value="">Todos los niveles</option>
+        <option value="Crítico">Crítico</option>
+        <option value="Mejorable">Mejorable</option>
+        <option value="Bueno">Bueno</option>
+        <option value="Excelente">Excelente</option>
+      </select>
+    </div>
+
+    {% if reports %}
+    <div style="overflow-x:auto">
+      <table class="reports-table" id="reports-table">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Sector</th>
+            <th>Ciudad</th>
+            <th>Score</th>
+            <th>Nivel</th>
+            <th>Fecha</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in reports %}
+          <tr data-nivel="{{ r.nivel }}" data-filename="{{ r.filename }}">
+            <td><strong>{{ r.cliente }}</strong></td>
+            <td>{{ r.sector }}</td>
+            <td>{{ r.ciudad }}</td>
+            <td><span class="score-chip">{{ r.score if r.score is not none else "—" }}</span><span style="color:var(--muted);font-size:12px">/100</span></td>
+            <td><span class="nivel-chip lv-{{ r.nivel|lower|replace('í','i') }}">{{ r.nivel }}</span></td>
+            <td style="color:var(--muted)">{{ r.fecha }}</td>
+            <td>
+              <div class="row-actions">
+                <a class="btn small" href="{{ url_for('report_view', filename=r.filename) }}">Ver</a>
+                <button class="btn small" onclick="exportPdf('{{ r.filename }}', this)">PDF</button>
+                <button class="btn small danger" onclick="deleteReport('{{ r.filename }}', this)">Eliminar</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="empty-state" id="no-match" hidden>Ningún informe con ese nivel.</p>
+    {% else %}
+    <p class="empty-state">Todavía no hay informes. Lanza tu primera auditoría desde la página principal.</p>
+    {% endif %}
+  </section>
+</main>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script>
+  var filter = document.getElementById("filter-nivel");
+  if (filter) {
+    filter.addEventListener("change", function () {
+      var nivel = filter.value;
+      var rows = document.querySelectorAll("#reports-table tbody tr");
+      var visible = 0;
+      rows.forEach(function (tr) {
+        var show = !nivel || tr.dataset.nivel === nivel;
+        tr.hidden = !show;
+        if (show) visible++;
+      });
+      var empty = document.getElementById("no-match");
+      if (empty) empty.hidden = visible > 0;
+    });
+  }
+
+  function deleteReport(filename, btn) {
+    if (!confirm("¿Eliminar el informe " + filename + "? Esta acción no se puede deshacer.")) return;
+    btn.disabled = true;
+    fetch("/reports/" + encodeURIComponent(filename) + "/delete", { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.ok) {
+          var tr = document.querySelector('tr[data-filename="' + filename + '"]');
+          if (tr) tr.remove();
+        } else {
+          alert(j.error || "No se pudo eliminar");
+          btn.disabled = false;
+        }
+      })
+      .catch(function (e) { alert("Error: " + e.message); btn.disabled = false; });
+  }
+</script>
+</body>
+</html>

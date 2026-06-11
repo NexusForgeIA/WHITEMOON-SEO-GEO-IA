@@ -69,6 +69,41 @@ python audit_batch.py clientes.csv
 Genera un informe por cliente en `reports/` y un resumen del lote ordenado
 por score (los peores primero = mayor oportunidad comercial).
 
+## Interfaz Web
+
+Además de la línea de comandos, la herramienta incluye una interfaz web local
+con diseño WhiteMoon (dark premium, gauge animado, historial de informes).
+
+```bash
+pip install -r requirements.txt
+python app.py
+```
+
+Abrir **http://localhost:5000** en el navegador.
+
+- **Password por defecto:** `whitemoon2026`
+- **Cambiar password:** variable de entorno `AUDIT_PASSWORD`
+
+```bash
+# Windows (PowerShell)
+$env:AUDIT_PASSWORD = "mi-password"; python app.py
+
+# Linux / macOS
+AUDIT_PASSWORD="mi-password" python app.py
+```
+
+Qué permite la interfaz:
+
+- Lanzar auditorías desde un formulario (URL, cliente, sector, ciudad)
+- Ver el score animado con gauge + barras SEO/GEO/AEO y errores/warnings
+- Ver el informe completo renderizado, copiar el Markdown
+- Descargar PDF (con `weasyprint` instalado genera el PDF en servidor; si no,
+  abre el diálogo de impresión del navegador con estilos de impresión limpios)
+- Historial de informes con filtro por nivel, ver/PDF/eliminar
+
+> La interfaz es para uso interno en local (`127.0.0.1`). No exponerla a
+> internet: los informes son confidenciales.
+
 ## Cómo interpretar el score
 
 | Score | Nivel | Significado |

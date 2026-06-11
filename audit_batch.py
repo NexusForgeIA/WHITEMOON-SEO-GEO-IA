@@ -20,7 +20,7 @@ import csv
 import sys
 from pathlib import Path
 
-from audit_client import run_audit
+from audit_client import AuditError, run_audit
 
 
 def main():
@@ -60,8 +60,8 @@ def main():
         try:
             path, score = run_audit(url, nombre, sector, ciudad)
             resultados.append((nombre, score, path))
-        except SystemExit:
-            # run_audit hace sys.exit(1) en errores de fetch: seguimos con el resto
+        except AuditError as e:
+            print("❌ ERROR: %s" % e)
             fallos.append((nombre, url))
         except Exception as e:  # un cliente roto no debe parar el lote
             print("❌ ERROR auditando %s: %s" % (url, e))
