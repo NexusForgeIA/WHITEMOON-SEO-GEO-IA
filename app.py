@@ -216,6 +216,7 @@ def export_pdf(filename):
         th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; }
         th { background: #f3f0fa; }
         blockquote { border-left: 3px solid #7c4dff; margin-left: 0; padding-left: 12px; color: #444; }
+        img { display: block; margin: 20px auto; max-width: 100%%; }
         </style></head><body>%s</body></html>""" % body
     pdf = WeasyHTML(string=doc).write_pdf()
     return send_file(io.BytesIO(pdf), mimetype="application/pdf",

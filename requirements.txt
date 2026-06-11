@@ -3,3 +3,5 @@ beautifulsoup4>=4.12
 flask>=3.0
 markdown>=3.5
 gunicorn>=21.2
+matplotlib>=3.8
+numpy>=1.26
