@@ -95,9 +95,12 @@ def _fetch_optional(url):
     return None
 
 
+class AuditError(Exception):
+    """Error de auditoría con mensaje claro para el usuario."""
+
+
 def _die(msg):
-    print("❌ ERROR: " + msg)
-    sys.exit(1)
+    raise AuditError(msg)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1067,8 +1070,9 @@ def _explicacion_llm(audit, ctx, nombre, sector, ciudad):
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
-def run_audit(url, nombre, sector, ciudad, out_dir="reports"):
-    """Ejecuta la auditoría completa y escribe el informe. Devuelve (ruta, score)."""
+def run_audit_full(url, nombre, sector, ciudad, out_dir="reports"):
+    """Ejecuta la auditoría completa, escribe el informe y devuelve un dict
+    con todos los datos (para CLI y para la interfaz web)."""
     print("🌙 WhiteMoon — Auditoría GEO IA")
     print("→ Auditando %s (%s, %s, %s)…" % (url, nombre, sector, ciudad))
 
@@ -1099,10 +1103,36 @@ def run_audit(url, nombre, sector, ciudad, out_dir="reports"):
     path = out / ("audit-%s-%s.md" % (domain, date.today().isoformat()))
     path.write_text(report, encoding="utf-8")
 
-    emoji, nombre_nivel, _ = nivel(score)
+    emoji, nombre_nivel, desc_nivel = nivel(score)
     print("✓ Score: %d/100 %s %s" % (score, emoji, nombre_nivel))
     print("✓ Informe generado: %s" % path)
-    return str(path), score
+
+    seo_pts, seo_max = audit.area_score("meta", "estructura", "schema", "robots")
+    geo_pts, geo_max = audit.area_score("geo")
+    aeo_pts, aeo_max = audit.area_score("aeo")
+    errores = [{"check": c["label"], "detail": c["detail"]}
+               for c in audit.checks if c["status"] == "error"]
+    warnings = [{"check": c["label"], "detail": c["detail"]}
+                for c in audit.checks if c["status"] == "warn"]
+
+    return {
+        "path": str(path), "filename": path.name, "score": score,
+        "nivel": nombre_nivel, "nivel_emoji": emoji, "nivel_desc": desc_nivel,
+        "seo": seo_pts, "seo_max": seo_max,
+        "geo": geo_pts, "geo_max": geo_max,
+        "aeo": aeo_pts, "aeo_max": aeo_max,
+        "frase": frase_resumen(score, nombre, sector, ciudad),
+        "problemas": top_problemas(audit),
+        "errores": errores, "warnings": warnings,
+        "report_md": report,
+        "cliente": nombre, "sector": sector, "ciudad": ciudad, "url": site["url"],
+    }
+
+
+def run_audit(url, nombre, sector, ciudad, out_dir="reports"):
+    """Ejecuta la auditoría completa y escribe el informe. Devuelve (ruta, score)."""
+    data = run_audit_full(url, nombre, sector, ciudad, out_dir)
+    return data["path"], data["score"]
 
 
 def main():
@@ -1110,7 +1140,11 @@ def main():
         print(__doc__)
         print("Uso: python audit_client.py <url> \"Nombre Cliente\" \"sector\" \"ciudad\"")
         sys.exit(1)
-    run_audit(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+    try:
+        run_audit(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+    except AuditError as e:
+        print("❌ ERROR: %s" % e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

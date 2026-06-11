@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ meta.cliente }} — Auditoría GEO IA · WhiteMoon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+  /* Impresión: fondo blanco, texto negro, márgenes correctos */
+  @media print {
+    @page { margin: 16mm 14mm; }
+    body { background: #fff !important; color: #111 !important; font-size: 11.5px; }
+    .topbar, .report-toolbar { display: none !important; }
+    main { max-width: none; padding: 0; }
+    .card { background: #fff; border: none; padding: 0; }
+    .report-body h1, .report-body h2, .report-body h3, .report-body h4 { color: #111 !important; }
+    .report-body h2 { border-bottom-color: #ccc; }
+    .report-body blockquote { background: #f6f4fb; color: #444; border-left-color: #7c4dff; }
+    .report-body th { background: #f3f0fa !important; color: #111; }
+    .report-body th, .report-body td { border-color: #bbb; }
+    .report-body em { color: #555; }
+    .report-body code { background: #f4f4f6; border-color: #ddd; color: #111; }
+    .report-body a { color: #111; text-decoration: none; }
+    .report-body table, .report-body blockquote { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo-moon"></span>
+    <span class="app-name">WhiteMoon</span>
+    <span class="sep">·</span>
+    <span>Auditoría GEO IA</span>
+  </div>
+  <div class="row-actions">
+    <a class="btn ghost" href="{{ url_for('index') }}">&larr; Volver</a>
+    <button class="btn primary" onclick="window.print()">Imprimir / Guardar PDF</button>
+  </div>
+</header>
+
+<main class="wide">
+  <section class="card report-toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:18px 24px">
+    <div>
+      <strong>{{ meta.cliente }}</strong>
+      <span style="color:var(--muted)"> · {{ meta.sector }} · {{ meta.ciudad }} · {{ meta.fecha }}</span>
+    </div>
+    {% if meta.score is not none %}
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="score-chip" style="font-size:22px">{{ meta.score }}<span style="color:var(--muted);font-size:13px">/100</span></span>
+      <span class="nivel-chip lv-{{ meta.nivel|lower|replace('í','i') }}">{{ meta.nivel }}</span>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <article class="report-body">
+      {{ informe_html|safe }}
+    </article>
+  </section>
+</main>
+
+<script>
+  // /reports/x.md?print=1 → abrir directamente el diálogo de impresión
+  if (new URLSearchParams(location.search).has("print")) {
+    window.addEventListener("load", function () {
+      setTimeout(function () { window.print(); }, 350);
+    });
+  }
+</script>
+</body>
+</html>

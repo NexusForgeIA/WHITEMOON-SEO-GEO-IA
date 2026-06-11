@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acceso — Auditoría GEO IA · WhiteMoon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="login-wrap">
+  <section class="card login-card">
+    <span class="logo-moon"></span>
+    <h1>WhiteMoon · Auditoría GEO IA</h1>
+    <p>Herramienta interna — acceso restringido</p>
+    <form method="post">
+      <input type="password" name="password" placeholder="Password" autofocus required>
+      {% if error %}<div class="field-error" style="text-align:left">{{ error }}</div>{% endif %}
+      <button type="submit" class="btn primary big">Entrar</button>
+    </form>
+  </section>
+</div>
+
+</body>
+</html>
