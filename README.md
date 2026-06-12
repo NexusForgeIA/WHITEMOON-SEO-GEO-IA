@@ -118,7 +118,7 @@ una password fuerte.
 
 | Score | Nivel | Significado |
 |-------|-------|-------------|
-| 0-49 | 🔴 Crítico | Invisible para motores de IA |
+| 0-49 | 🔴 Crítico | Señales técnicas para motores de IA muy incompletas |
 | 50-69 | 🟡 Mejorable | Presencia parcial |
 | 70-84 | 🟢 Bueno | Bien posicionado |
 | 85-100 | ⭐ Excelente | Referente en su sector |
@@ -129,7 +129,7 @@ una password fuerte.
 ## 🎯 RESUMEN EJECUTIVO
 *(Para el CEO/dueño del negocio)*
 
-**Puntuación global: 47/100 — 🔴 Crítico** (invisible para motores de IA)
+**Puntuación global: 47/100 — 🔴 Crítico** (señales técnicas para motores de IA muy incompletas)
 
 | Área | Puntuación | Estado |
 |------|-----------|--------|
@@ -137,17 +137,16 @@ una password fuerte.
 | GEO — Visibilidad local IA | 4/20 | ❌ |
 | AEO — Respuestas en IA | 10/30 | ❌ |
 
-**En una frase:** Hoy, cuando alguien pregunta a ChatGPT o Perplexity por
-"clínica dental en Majadahonda", Clínica Dental Sonrisa es invisible: la web
-no da a los motores de IA la información que necesitan para recomendarla.
+**En una frase:** Clínica Dental Sonrisa tiene margen de mejora en las señales
+técnicas que los motores de IA usan para verificar y citar negocios locales.
 
 **Los 3 problemas más urgentes:**
-1. No hay preguntas frecuentes estructuradas: cuando un cliente pregunta a la
-   IA, la respuesta la dará la web de un competidor.
-2. La web no tiene llms.txt: los motores de IA no tienen ficha del negocio y
-   recomendarán a competidores que sí la tengan.
-3. El negocio no tiene coordenadas declaradas: pierde todas las búsquedas tipo
-   "cerca de mí", las de mayor intención de compra.
+1. No hay preguntas frecuentes estructuradas: los LLMs no tienen respuestas
+   del negocio que citar textualmente.
+2. La web no tiene llms.txt: los motores de IA no tienen una ficha estándar
+   del negocio que leer primero.
+3. El negocio no tiene coordenadas declaradas: compite en desventaja en las
+   búsquedas tipo "cerca de mí", las de mayor intención de compra.
 ```
 
 El informe completo incluye además: análisis técnico check a check (con

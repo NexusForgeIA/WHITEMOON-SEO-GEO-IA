@@ -596,7 +596,7 @@ def check_ads(a, site):
 
 def nivel(score):
     if score < 50:
-        return "🔴", "Crítico", "invisible para motores de IA"
+        return "🔴", "Crítico", "señales técnicas para motores de IA muy incompletas"
     if score < 70:
         return "🟡", "Mejorable", "presencia parcial en motores de IA"
     if score < 85:
@@ -606,9 +606,8 @@ def nivel(score):
 
 def frase_resumen(score, nombre, sector, ciudad):
     if score < 50:
-        return ("Hoy, cuando alguien pregunta a ChatGPT o Perplexity por \"%s en %s\", "
-                "%s es invisible: la web no da a los motores de IA la información que "
-                "necesitan para recomendarla." % (sector, ciudad, nombre))
+        return ("%s tiene margen de mejora en las señales técnicas que los motores de IA "
+                "usan para verificar y citar negocios locales." % nombre)
     if score < 70:
         return ("%s tiene una base aprovechable, pero los motores de IA solo 'entienden' "
                 "parte del negocio: con varias correcciones concretas puede empezar a "
@@ -893,25 +892,25 @@ def estado_emoji(pts, maxp):
 def top_problemas(audit):
     """Los 3 problemas con más puntos perdidos, en lenguaje de negocio."""
     negocio = {
-        "llms_txt": "La web no tiene llms.txt: los motores de IA no tienen ficha del negocio y recomendarán a competidores que sí la tengan.",
-        "jsonld": "La web no tiene datos estructurados: para ChatGPT o Perplexity el negocio 'no existe' como entidad recomendable.",
-        "org": "El negocio no está identificado como empresa local en el código: la IA no puede recomendarlo con nombre, dirección y teléfono.",
-        "aeo_faq_schema": "No hay preguntas frecuentes estructuradas: cuando un cliente pregunta a la IA, la respuesta la dará la web de un competidor.",
+        "llms_txt": "La web no tiene llms.txt: los motores de IA no tienen una ficha estándar del negocio que leer primero.",
+        "jsonld": "La web no tiene datos estructurados: los motores de IA no pueden verificar el negocio como entidad (nombre, dirección, servicios).",
+        "org": "El negocio no está identificado como empresa local en el código: la IA no puede verificarlo con nombre, dirección y teléfono.",
+        "aeo_faq_schema": "No hay preguntas frecuentes estructuradas: los LLMs no tienen respuestas del negocio que citar textualmente.",
         "aeo_faq_dom": "No hay sección de preguntas y respuestas visible: la IA no tiene texto del negocio que citar.",
         "lb_complete": "Faltan datos de contacto estructurados (dirección/teléfono): la IA no puede 'fichar' el negocio para búsquedas locales.",
-        "geocoords": "El negocio no tiene coordenadas declaradas: pierde todas las búsquedas tipo 'cerca de mí', las de mayor intención de compra.",
-        "lb_locality": "La dirección no está en formato máquina: el negocio no aparece asociado a su ciudad en respuestas de IA.",
-        "icbm": "Sin coordenadas geográficas la web no compite en búsquedas de proximidad.",
+        "geocoords": "El negocio no tiene coordenadas declaradas: compite en desventaja en las búsquedas tipo 'cerca de mí', las de mayor intención de compra.",
+        "lb_locality": "La dirección no está en formato máquina: el negocio no queda asociado a su ciudad en los datos que leen los motores de IA.",
+        "icbm": "Sin coordenadas geográficas la web compite en desventaja en búsquedas de proximidad.",
         "geo_region": "La web no declara su provincia: la IA no la asocia con la zona donde están sus clientes.",
-        "geo_place": "La web no declara su ciudad: invisible en consultas 'en {ciudad}'.",
+        "geo_place": "La web no declara su ciudad: pierde relevancia en consultas 'en {ciudad}'.",
         "desc": "Sin descripción para buscadores, Google inventa el texto del anuncio gratuito del negocio y rinde peor.",
         "og_img": "Cada vez que alguien comparte la web por WhatsApp, el enlace sale sin imagen: se pierde confianza y clics.",
         "title": "La web no tiene titular para buscadores: pierde clics en cada búsqueda.",
         "viewport": "La web no está marcada como apta para móvil: Google la penaliza en más del 60% de las búsquedas.",
         "h1": "La página no tiene un titular principal claro: buscadores e IA no saben cuál es el servicio principal.",
-        "bot_GPTBot": "ChatGPT tiene prohibido leer la web: el negocio no puede aparecer en sus respuestas.",
-        "bot_ClaudeBot": "Claude tiene prohibido leer la web: el negocio no puede aparecer en sus respuestas.",
-        "bot_PerplexityBot": "Perplexity tiene prohibido leer la web: el negocio no puede aparecer en sus respuestas.",
+        "bot_GPTBot": "El crawler de ChatGPT (GPTBot) tiene el acceso bloqueado en robots.txt: ese motor no puede leer el contenido de la web.",
+        "bot_ClaudeBot": "El crawler de Claude (ClaudeBot) tiene el acceso bloqueado en robots.txt: ese motor no puede leer el contenido de la web.",
+        "bot_PerplexityBot": "El crawler de Perplexity (PerplexityBot) tiene el acceso bloqueado en robots.txt: ese motor no puede leer el contenido de la web.",
         "aeo_howto": "No se explica ningún proceso paso a paso: se pierden las consultas '¿cómo funciona…?' en IA.",
     }
     fallos = sorted(audit.failed(), key=lambda c: c["max"] - c["points"], reverse=True)
@@ -1272,54 +1271,62 @@ def render_report(audit, site, ctx):
     w("---")
     w("")
 
-    # ── Evidencia en motores de IA ──
-    w("## 📊 EVIDENCIA EN MOTORES DE IA")
-    w("*(Lo que diferencia esta auditoría — ninguna agencia SEO tradicional lo hace)*")
-    w("")
+    # ── Qué mejora con esta auditoría ──
     queries = ['- "%s en %s"' % (sector, ciudad),
                '- "mejor %s %s"' % (sector, ciudad),
-               '- "%s recomendado %s"' % (sector, ciudad),
-               '- "%s cerca de %s"' % (sector, ciudad)]
+               '- "%s"' % nombre]
     if score >= 90:
-        w("✅ Tu web está correctamente optimizada para aparecer en ChatGPT, Grok y Perplexity.")
+        w("## 📊 QUÉ TIENES BIEN Y CÓMO MANTENERLO")
         w("")
-        w("**Queries con las que deberías aparecer ahora mismo:**")
+        w("Tu web tiene las señales técnicas correctas para que los motores de IA "
+          "puedan verificar y citar tu negocio con confianza.")
         w("")
-        for q in queries:
-            w(q)
+        w("**Lo que tienes implementado correctamente:**")
         w("")
-        w("Búscalas en ChatGPT y Grok para verificar tu posición. Si no apareces aún, "
-          "es cuestión de tiempo — los crawlers de IA actualizan su índice cada 30-90 días.")
+        w("✅ Crawlers de IA con acceso permitido")
+        w("✅ Datos estructurados verificables (schema)")
+        w("✅ Señales GEO asociadas a tu ciudad")
+        w("✅ Contenido FAQ y HowTo citable por LLMs")
+        w("✅ llms.txt con ficha del negocio para LLMs")
         w("")
-        w("**Lo que tienes que mantener:** actualizar el contenido FAQ periódicamente y "
-          "no eliminar las señales GEO/AEO que ya tienes implementadas.")
-        w("")
-    elif score >= 60:
-        w("Tu web tiene base pero hay gaps que impiden aparecer de forma consistente "
-          "en motores de IA.")
-        w("")
-        w("**Queries donde deberías aparecer pero puede que no aparezcas:**")
+        w("**Verifica tu posición actual (2 minutos):** busca en ChatGPT y Perplexity:")
         w("")
         for q in queries:
             w(q)
         w("")
-        w("Corrige los errores del plan de acción y vuelve a auditar en 30 días.")
+        w("**Para mantener tu posición:**")
+        w("")
+        w("- Actualiza el contenido FAQ periódicamente")
+        w("- No elimines las señales GEO/AEO implementadas")
+        w("- Añade contenido nuevo regularmente")
         w("")
     else:
-        w("**Queries exactas para verificar ahora mismo:**")
-        w("Busca estas frases en ChatGPT, Grok y Perplexity y comprueba si apareces:")
+        w("## 📊 QUÉ MEJORA CON ESTA AUDITORÍA")
+        w("")
+        w("Esta auditoría mide las señales técnicas que los motores de IA (ChatGPT, "
+          "Grok, Perplexity, Gemini) utilizan para entender, verificar y citar negocios.")
+        w("")
+        w("**Lo que conseguirás implementando el plan de acción:**")
+        w("")
+        w("✅ Los crawlers de IA (GPTBot, ClaudeBot, PerplexityBot) podrán leer y "
+          "entender tu negocio correctamente")
+        w("✅ Tus datos (nombre, dirección, servicios, zona) estarán estructurados "
+          "para ser citados textualmente")
+        w("✅ Tendrás FAQ y HowTo que los LLMs pueden usar como respuesta directa "
+          "a preguntas de clientes")
+        w("✅ Tu negocio estará asociado con precisión a tu ciudad y zona de cobertura")
+        w("")
+        w("**Verifica tu posición actual (2 minutos):** busca en ChatGPT y Perplexity:")
         w("")
         for q in queries:
             w(q)
         w("")
-        w("**Lo que verás si los errores críticos no se corrigen:**")
+        w("Anota si apareces — tras el plan de acción vuelve a buscar en 30-60 días "
+          "para medir el impacto real.")
         w("")
-        w("❌ %s NO aparecerá en las respuestas de IA" % nombre)
-        w("✅ Competidores con GEO/AEO implementado SÍ aparecerán antes")
-        w("")
-        w("**Por qué ocurre:**")
-        w("")
-        w(_explicacion_llm(audit, ctx, nombre, sector, ciudad))
+        w("*Nota: la presencia en motores de IA depende de múltiples factores "
+          "(antigüedad del dominio, reputación, competencia). Esta auditoría optimiza "
+          "los factores técnicos verificables que están en tu mano.*")
         w("")
     w("---")
     w("")
@@ -1433,41 +1440,6 @@ def _render_fix(w, check):
     w("  - **Por qué importa:** %s" % porque)
     w("  - **Qué pierde el negocio:** %s" % pierde)
     w("  - **Cómo corregirlo:** %s" % como)
-
-
-def _explicacion_llm(audit, ctx, nombre, sector, ciudad):
-    """Explica cómo deciden los LLMs, anclada a los errores concretos detectados."""
-    failed_ids = {c["id"] for c in audit.failed()}
-    partes = [
-        "Cuando alguien pregunta a un LLM por \"%s en %s\", el motor no improvisa: "
-        "recupera entidades de negocio que pueda verificar (nombre + dirección + teléfono "
-        "estructurados), que tengan contenido citable (FAQ, respuestas claras) y a las que "
-        "sus crawlers puedan acceder. Después recomienda las que le dan más confianza." % (sector, ciudad)
-    ]
-    motivos = []
-    if {"jsonld", "org", "lb_complete"} & failed_ids:
-        motivos.append("la web no expone una entidad de negocio verificable en JSON-LD, "
-                       "así que el LLM no puede confirmar que %s es un %s real en %s" % (nombre, sector, ciudad))
-    if {"geo_region", "geo_place", "icbm", "geocoords", "lb_locality"} & failed_ids:
-        motivos.append("faltan señales de geolocalización, por lo que la IA no asocia el negocio con %s "
-                       "y prioriza competidores correctamente etiquetados" % ciudad)
-    if {"aeo_faq_schema", "aeo_faq_dom", "faqpage"} & failed_ids:
-        motivos.append("no hay preguntas y respuestas estructuradas que el motor pueda citar textualmente, "
-                       "que es el formato del que se alimentan las respuestas de IA")
-    if "llms_txt" in failed_ids:
-        motivos.append("no existe llms.txt, el resumen estándar que los LLMs leen primero para entender un negocio")
-    bloqueados = [b for b, s in ctx.get("bots", {}).items() if s == "blocked"]
-    if bloqueados:
-        motivos.append("los bots %s tienen el acceso bloqueado en robots.txt: esos motores no pueden "
-                       "leer la web aunque quisieran" % ", ".join(bloqueados))
-    if motivos:
-        partes.append("En el caso de %s, hoy ocurre lo siguiente: %s." % (nombre, "; ".join(motivos)))
-        partes.append("El resultado es directo: ante esas cuatro queries, la IA tiene más confianza en "
-                      "cualquier competidor que sí exponga estos datos, y será a él a quien recomiende.")
-    else:
-        partes.append("%s expone correctamente estas señales: el trabajo ahora es mantenerlas y ampliar "
-                      "contenido citable para consolidar la posición." % nombre)
-    return "\n\n".join(partes)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
