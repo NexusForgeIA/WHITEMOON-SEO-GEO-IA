@@ -100,6 +100,10 @@ def audit():
     nombre = (data.get("nombre") or "").strip()
     sector = (data.get("sector") or "").strip()
     ciudad = (data.get("ciudad") or "").strip()
+    # Modo HTML directo (uso interno): HTML pegado a mano cuando la web
+    # bloquea el fetch (Cloudflare/403). URL/sector/ciudad siguen siendo
+    # obligatorios para los metadatos del informe.
+    html_manual = (data.get("html") or "").strip() or None
 
     if not all([url, nombre, sector, ciudad]):
         return jsonify(ok=False, error="Faltan campos: url, nombre, sector y ciudad son obligatorios."), 400
@@ -108,7 +112,8 @@ def audit():
         return jsonify(ok=False, error="La URL no parece válida (ej: https://cliente.es)."), 400
 
     try:
-        result = run_audit_full(url, nombre, sector, ciudad, out_dir=str(REPORTS_DIR))
+        result = run_audit_full(url, nombre, sector, ciudad, out_dir=str(REPORTS_DIR),
+                                html_manual=html_manual)
     except AuditError as e:
         return jsonify(ok=False, error=str(e)), 502
     except Exception as e:

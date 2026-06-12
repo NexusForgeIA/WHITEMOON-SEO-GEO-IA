@@ -186,6 +186,31 @@ select {
 }
 select option { background: var(--bg2); color: var(--text); }
 
+/* Modo HTML directo (uso interno): discreto, colapsado por defecto */
+.html-directo summary {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.html-directo textarea {
+  width: 100%;
+  margin-top: 8px;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  outline: none;
+  resize: vertical;
+}
+.html-directo textarea:focus {
+  border-color: var(--p);
+  box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.18);
+}
+
 .field-error { color: var(--red); font-size: 12px; margin-top: 4px; min-height: 16px; }
 
 /* ── Loading ────────────────────────────────────────────── */
