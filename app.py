@@ -35,7 +35,7 @@ app.secret_key = hashlib.sha256(("whitemoon-audit-" + PASSWORD).encode()).hexdig
 app.permanent_session_lifetime = timedelta(hours=12)
 
 SECTORES = [
-    "academia", "bodega y vinos", "centro de estética", "clínica dental",
+    "bodega y vinos", "centro de estética", "clínica dental",
     "despacho de abogados", "e-commerce", "farmacia", "fontanería",
     "formación y academia", "gestoría", "gimnasio", "hostelería", "hotel",
     "inmobiliaria", "marketing y publicidad", "muebles y decoración",

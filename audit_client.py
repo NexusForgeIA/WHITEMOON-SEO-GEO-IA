@@ -1010,6 +1010,8 @@ SECTOR_PATTERNS = [
     ("farmacia", ["farmac", "parafarm"]),
     ("abogados", ["abogad", "jurid", "legal"]),
     ("podologia", ["podolog"]),
+    ("psicologia", ["psicolog", "coach"]),
+    ("psiquiatria", ["psiquiatr"]),
     ("academia", ["academ", "formaci", "escuela"]),
     ("gimnasio", ["gimnas", "fitness", "crossfit"]),
     ("hotel", ["hotel", "alojam", "hostal", "apartament"]),
@@ -1090,6 +1092,7 @@ PRODUCTOS = {
 PRODUCTO_POR_SECTOR = {
     "dental": "orion", "estetica": "orion", "podologia": "orion", "gimnasio": "orion",
     "gestoria": "core_rag", "abogados": "core_rag", "academia": "core_rag",
+    "psicologia": "core_rag", "psiquiatria": "core_rag",
     "hosteleria": "spark", "hotel": "spark",
     "inmobiliaria": "core",
     "taller": "orion", "fontaneria": "orion",
@@ -1101,7 +1104,7 @@ PRODUCTO_POR_SECTOR = {
 def productos_recomendados(score, sector):
     """Orion IA Agent siempre primero; el segundo según sector y score."""
     skey = sector_key(sector)
-    if skey in ("gestoria", "abogados", "academia"):
+    if skey in ("gestoria", "abogados", "academia", "psicologia", "psiquiatria"):
         segundo = "core_rag"
     elif score < 50:
         segundo = "spark"
