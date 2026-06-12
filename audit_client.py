@@ -47,10 +47,24 @@ LOCALBUSINESS_HINTS = (
 # BLOQUE 1 — FETCH
 # ──────────────────────────────────────────────────────────────────────────────
 
-def fetch_site(url):
-    """Descarga la página principal, robots.txt y llms.txt."""
+def fetch_site(url, html_manual=None):
+    """Descarga la página principal, robots.txt y llms.txt.
+
+    Con html_manual (HTML pegado a mano cuando la web bloquea el fetch,
+    p. ej. Cloudflare/403) se omite la descarga de la página principal y
+    se analiza ese HTML; robots.txt y llms.txt se intentan igualmente.
+    """
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+
+    if html_manual:
+        root = "{0}://{1}".format(urlparse(url).scheme, urlparse(url).netloc)
+        html = html_manual.encode("utf-8")
+        return {"url": url, "root": root, "html": html,
+                "soup": BeautifulSoup(html, "html.parser"),
+                "robots": _fetch_optional(root + "/robots.txt"),
+                "llms": _fetch_optional(root + "/llms.txt")}
+
     try:
         resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
     except requests.exceptions.SSLError:
@@ -1452,13 +1466,17 @@ def _render_fix(w, check):
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
-def run_audit_full(url, nombre, sector, ciudad, out_dir="reports"):
+def run_audit_full(url, nombre, sector, ciudad, out_dir="reports", html_manual=None):
     """Ejecuta la auditoría completa, escribe el informe y devuelve un dict
-    con todos los datos (para CLI y para la interfaz web)."""
-    print("🌙 WhiteMoon — Auditoría GEO IA")
-    print("→ Auditando %s (%s, %s, %s)…" % (url, nombre, sector, ciudad))
+    con todos los datos (para CLI y para la interfaz web).
 
-    site = fetch_site(url)
+    html_manual: HTML pegado a mano (modo directo); si se indica, no se
+    descarga la página principal. El análisis es idéntico en ambos casos."""
+    print("🌙 WhiteMoon — Auditoría GEO IA")
+    print("→ Auditando %s (%s, %s, %s)%s…" % (url, nombre, sector, ciudad,
+                                              " [HTML directo]" if html_manual else ""))
+
+    site = fetch_site(url, html_manual)
     print("✓ HTML descargado (%d KB) · robots.txt: %s · llms.txt: %s" % (
         len(site["html"]) // 1024,
         "sí" if site["robots"] is not None else "no",

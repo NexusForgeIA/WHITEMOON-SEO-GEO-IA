@@ -145,7 +145,8 @@
       url: $("f-url").value.trim(),
       nombre: $("f-nombre").value.trim(),
       sector: sectorSel.value === "otro" ? sectorOtro.value.trim() : sectorSel.value,
-      ciudad: $("f-ciudad").value.trim()
+      ciudad: $("f-ciudad").value.trim(),
+      html: $("f-html").value.trim()
     };
 
     startLoading();
