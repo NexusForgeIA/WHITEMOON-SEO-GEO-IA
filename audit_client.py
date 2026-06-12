@@ -89,7 +89,15 @@ def fetch_site(url, html_manual=None):
         _die("La web devolvió HTTP %d al pedir %s.\n   Sugerencia: %s" % (resp.status_code, url, hint))
 
     final_url = resp.url
-    root = "{0}://{1}".format(urlparse(final_url).scheme, urlparse(final_url).netloc)
+    # root = URL base incluyendo el path (sin trailing slash), para que robots.txt
+    # y llms.txt se busquen relativos al sitio. Caso típico: GitHub Pages de proyecto
+    # (https://user.github.io/PROYECTO/) donde el sitio NO vive en el dominio raíz.
+    parsed = urlparse(final_url)
+    path = parsed.path
+    # Si el path apunta a un fichero (último segmento con extensión), usar su directorio.
+    if "." in path.rsplit("/", 1)[-1]:
+        path = path.rsplit("/", 1)[0]
+    root = "{0}://{1}{2}".format(parsed.scheme, parsed.netloc, path.rstrip("/"))
 
     robots_txt = _fetch_optional(root + "/robots.txt")
     llms_txt = _fetch_optional(root + "/llms.txt")
