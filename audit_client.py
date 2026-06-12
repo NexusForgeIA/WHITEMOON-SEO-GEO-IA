@@ -986,6 +986,9 @@ SECTOR_TICKETS = {
     "marketing y publicidad": 2000,
     "muebles y decoración": 900,
     "bodega y vinos": 1800,
+    "psicología y coaching": 350,
+    "psiquiatría": 500,
+    "formación y academia": 300,
     "otro": 400,
 }
 

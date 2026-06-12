@@ -37,9 +37,10 @@ app.permanent_session_lifetime = timedelta(hours=12)
 SECTORES = [
     "academia", "bodega y vinos", "centro de estética", "clínica dental",
     "despacho de abogados", "e-commerce", "farmacia", "fontanería",
-    "gestoría", "gimnasio", "hostelería", "hotel", "inmobiliaria",
-    "marketing y publicidad", "muebles y decoración", "podología",
-    "servicio técnico", "taller mecánico", "transporte y logística",
+    "formación y academia", "gestoría", "gimnasio", "hostelería", "hotel",
+    "inmobiliaria", "marketing y publicidad", "muebles y decoración",
+    "podología", "psicología y coaching", "psiquiatría", "servicio técnico",
+    "taller mecánico", "transporte y logística",
     "otro",
 ]
 
