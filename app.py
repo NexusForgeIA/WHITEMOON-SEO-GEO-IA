@@ -257,9 +257,7 @@ def _notify_whatsapp(nombre, telefono, url, score, score_tecnico, score_control_
             "📊 Score: %d/100\n"
             "🔧 Técnico: %s · 🤖 Control IA: %s"
             % (nombre, telefono, url, score, score_tecnico, score_control_ia))
-    # DEBUG temporal: verificar que CALLMEBOT_APIKEY se lee del entorno
     apikey = os.environ.get("CALLMEBOT_APIKEY", "")
-    print(f"[DEBUG-WA] apikey={apikey!r} phone={CALLMEBOT_PHONE!r} msg={text[:50]!r}", flush=True)
     if not apikey:
         app.logger.info("CALLMEBOT_APIKEY no configurado: aviso de WhatsApp omitido.")
         return
