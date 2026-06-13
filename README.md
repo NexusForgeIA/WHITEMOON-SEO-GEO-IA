@@ -98,10 +98,8 @@ Qué permite la interfaz:
 - Ver el score animado con gauge + barras SEO/GEO/AEO, desglosado además en
   **Score Técnico** (SEO + Schema + Robots) y **Score Control IA**
   (GEO + AEO + llms.txt)
-- **Freemium / captura de lead:** muestra gratis el score, el resumen ejecutivo
-  y las 2 primeras áreas; para desbloquear el plan de acción completo y el PDF
-  pide nombre, email y teléfono y los guarda en Supabase (`leads_web`,
-  `origen = auditoria-geo-ia`, `sector = auditoria`)
+- El informe completo y el PDF se muestran **siempre** tras el login (la
+  herramienta ya está protegida por password, sin muros adicionales)
 - Bloque **Verifica tu presencia en IA ahora** con enlaces pregenerados a
   ChatGPT, Perplexity y Grok usando el nombre del negocio + ciudad
 - Ver el informe completo renderizado, copiar el Markdown
@@ -109,12 +107,15 @@ Qué permite la interfaz:
   abre el diálogo de impresión del navegador con estilos de impresión limpios)
 - Historial de informes con filtro por nivel, ver/PDF/eliminar
 
-#### Captura de leads (Supabase)
+#### Endpoint /lead (Supabase) — opcional, sin usar en el flujo normal
 
-El muro de lead inserta en la tabla `leads_web` del proyecto Supabase vía su
-API REST. Las credenciales llevan un valor por defecto en el código (la clave
-`anon` es pública por diseño; la política RLS solo permite `INSERT` anónimo).
-Para apuntar a otro proyecto, define las variables de entorno:
+Existe un endpoint `POST /lead` que inserta en la tabla `leads_web` del
+proyecto Supabase (`origen = auditoria-geo-ia`, `sector = auditoria`). **No se
+llama desde la interfaz** — se conserva por si se quiere reactivar una captura
+de leads en el futuro. Las credenciales llevan un valor por defecto en el
+código (la clave `anon` es pública por diseño; la política RLS solo permite
+`INSERT` anónimo). Para apuntar a otro proyecto, define las variables de
+entorno:
 
 | Variable | Por defecto |
 |----------|-------------|
