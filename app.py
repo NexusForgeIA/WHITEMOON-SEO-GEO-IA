@@ -249,13 +249,17 @@ def _save_public_lead(nombre, telefono, url, score):
         app.logger.warning("No se pudo guardar el lead público: %s", e)
 
 
-def _notify_whatsapp(nombre, telefono, url, score):
+def _notify_whatsapp(nombre, telefono, url, score, score_tecnico, score_control_ia):
     """Avisa por WhatsApp vía CallMeBot (best-effort; se omite sin apikey)."""
     if not CALLMEBOT_APIKEY:
         app.logger.info("CALLMEBOT_APIKEY no configurado: aviso de WhatsApp omitido.")
         return
-    text = ("🔍 Nueva auditoría gratuita\n👤 %s · 📱 %s\n🌐 %s\n📊 Score: %d/100"
-            % (nombre, telefono, url, score))
+    text = ("🔍 Auditoría GEO/SEO Gratuita\n"
+            "👤 %s · 📱 %s\n"
+            "🌐 URL: %s\n"
+            "📊 Score: %d/100\n"
+            "🔧 Técnico: %s · 🤖 Control IA: %s"
+            % (nombre, telefono, url, score, score_tecnico, score_control_ia))
     try:
         requests.get(
             "https://api.callmebot.com/whatsapp.php",
@@ -288,13 +292,15 @@ def audit_public():
         return jsonify(ok=False, error="Error inesperado durante la auditoría: %s" % e), 500
 
     score = result["score"]
+    score_tecnico = result["tecnico"]
+    score_control_ia = result["control"]
     _save_public_lead(nombre, telefono, url, score)
-    _notify_whatsapp(nombre, telefono, url, score)
+    _notify_whatsapp(nombre, telefono, url, score, score_tecnico, score_control_ia)
 
     return jsonify(
         score=score,
-        score_tecnico=result["tecnico"],
-        score_control_ia=result["control"],
+        score_tecnico=score_tecnico,
+        score_control_ia=score_control_ia,
         top3_problemas=result["problemas"][:3],
     )
 
