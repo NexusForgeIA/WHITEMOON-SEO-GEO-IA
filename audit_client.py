@@ -18,7 +18,7 @@ import sys
 import unicodedata
 from datetime import date
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote_plus, urljoin, urlparse
 
 try:
     import requests
@@ -256,6 +256,7 @@ def check_meta_tags(a, site, ctx):
 
     title_tag = soup.find("title")
     title = title_tag.get_text(strip=True) if title_tag else ""
+    ctx["title"] = title
     if title:
         a.add("meta", "title", "Etiqueta <title> presente", "ok", 2, 2, '"%s"' % title[:90])
     else:
@@ -610,123 +611,123 @@ def frase_resumen(score, nombre, sector, ciudad):
 
 
 # Explicaciones técnicas para cada error posible: (qué es, por qué importa,
-# qué pierde el negocio, cómo corregirlo)
+# qué tiene la competencia que sí lo implementa, cómo corregirlo)
 FIX_GUIDE = {
     "title": ("El <title> es el titular de la página en Google y la primera señal que leen los LLMs.",
               "Sin título, ni Google ni los motores de IA saben de qué trata la web.",
-              "Clics en buscadores y cualquier posibilidad de cita en respuestas de IA.",
+              "Tu competidor con un <title> claro aparece en buscadores y en respuestas de IA; tú, no.",
               "Añadir en <head>: <title>Marca — Servicio en Ciudad</title> (≤65 caracteres)."),
     "desc": ("La meta description es el texto bajo el título en los resultados de búsqueda.",
              "Google y los LLMs la usan como resumen canónico de la página.",
-             "CTR en buscadores: sin ella Google inventa el snippet y suele quedar peor.",
+             "Tu competidor controla su descripción en Google; en la tuya, Google improvisa un texto peor.",
              '<meta name="description" content="Descripción con servicio + ciudad, ≤160 caracteres">.'),
     "canonical": ("La etiqueta canonical indica la URL 'oficial' de la página.",
                   "Evita contenido duplicado (http/https, con/sin www) que diluye la autoridad.",
-                  "Autoridad de dominio repartida entre URLs duplicadas → peor ranking.",
+                  "Tu competidor concentra toda su autoridad en una URL; la tuya se reparte y rankea por debajo.",
                   '<link rel="canonical" href="URL-exacta-de-la-página"> en el <head>.'),
     "og_td": ("Open Graph controla cómo se ve la web al compartirla (WhatsApp, LinkedIn, etc.).",
               "Sin og:title/og:description el enlace compartido sale sin titular ni resumen.",
-              "Cada enlace compartido por clientes pierde impacto y clics.",
+              "Cuando tu competidor comparte su web sale con titular y resumen; la tuya, en blanco.",
               'Añadir <meta property="og:title" …> y <meta property="og:description" …>.'),
     "og_img": ("og:image es la imagen de previsualización al compartir el enlace.",
                "WhatsApp, iMessage y LinkedIn no renderizan SVG ni enlaces sin imagen.",
-               "Los enlaces compartidos salen 'en gris', sin imagen: menos confianza y menos clics.",
+               "El enlace de tu competidor sale con imagen atractiva; el tuyo, 'en gris' y sin clics.",
                "Crear una imagen JPG/PNG de 1200×630 px y declararla en og:image (URL absoluta)."),
     "viewport": ("El meta viewport activa el renderizado responsive en móviles.",
                  "Google indexa mobile-first: sin viewport la web se considera no apta para móvil.",
-                 "Posiciones en Google para más del 60% del tráfico (móvil).",
+                 "Tu competidor está marcado como apto para móvil y se queda el 60% del tráfico que tú pierdes.",
                  '<meta name="viewport" content="width=device-width, initial-scale=1">.'),
     "h1": ("El H1 es el titular principal que estructura semánticamente la página.",
            "Buscadores y LLMs lo usan para identificar el tema central.",
-           "Relevancia temática: la página compite peor por su keyword principal.",
+           "Tu competidor deja claro su servicio principal; tu página compite peor por la misma keyword.",
            "Dejar exactamente un <h1> con el servicio principal + ciudad."),
     "hierarchy": ("La jerarquía H1→H2→H3 es el índice lógico del contenido.",
                   "Los LLMs trocean el contenido por encabezados para extraer respuestas.",
-                  "Fragmentos mal delimitados → peor extracción de respuestas por la IA.",
+                  "La IA extrae respuestas limpias de la web de tu competidor; de la tuya, fragmentos mal delimitados.",
                   "Reordenar encabezados sin saltar niveles (de H2 se pasa a H3, no a H4)."),
     "img_alt": ("El atributo alt describe cada imagen para buscadores y lectores de pantalla.",
                 "Es señal de relevancia, accesibilidad legal (EAA 2025) y contexto para la IA.",
-                "Tráfico de Google Imágenes y riesgo de incumplimiento de accesibilidad.",
+                "Tu competidor aparece en Google Imágenes y cumple accesibilidad; tú quedas fuera y expuesto.",
                 'Añadir alt descriptivo a cada <img>: alt="qué se ve + contexto del negocio".'),
     "img_dims": ("width/height reservan el espacio de la imagen antes de cargarla.",
                  "Evitan el salto de layout (CLS), métrica de Core Web Vitals.",
-                 "Penalización de experiencia de página en Google.",
+                 "La web de tu competidor carga sin saltos; la tuya pierde puntos de experiencia en Google.",
                  "Declarar width y height reales en cada <img>."),
     "scripts": ("defer/async evitan que los scripts bloqueen el renderizado.",
                 "Mejoran LCP/FID, métricas que Google usa para rankear.",
-                "Velocidad percibida y posiciones en móvil.",
+                "La web de tu competidor carga más rápido y rankea mejor en móvil que la tuya.",
                 "Añadir defer a los <script src> que no sean críticos para el primer render."),
     "jsonld": ("JSON-LD son los datos estructurados que describen el negocio a las máquinas.",
                "Es el formato que Google y los LLMs leen para 'entender' qué es el negocio, dónde está y qué ofrece.",
-               "Sin JSON-LD el negocio es texto plano para la IA: no es citable ni recomendable con confianza.",
+               "Tu competidor es una entidad que la IA entiende y recomienda; tú eres texto plano que ignora.",
                'Añadir <script type="application/ld+json"> con LocalBusiness (+FAQPage) en el <head>.'),
     "jsonld_valid": ("Bloques JSON-LD con sintaxis inválida.",
                      "Un JSON roto se ignora por completo: es como no tenerlo.",
-                     "Todo el esfuerzo de schema ya invertido no cuenta.",
+                     "Tu competidor tiene schema que sí cuenta; el tuyo, roto, es como no tenerlo.",
                      "Validar cada bloque en validator.schema.org y corregir la sintaxis."),
     "org": ("Schema Organization/LocalBusiness identifica la entidad detrás de la web.",
             "Los LLMs recomiendan entidades, no páginas: sin entidad declarada no hay recomendación.",
-            "Presencia en el 'knowledge graph' de Google y en las respuestas de IA.",
+            "Tu competidor está declarado como empresa local y la IA lo recomienda con nombre y datos; tú no apareces.",
             "Añadir un nodo LocalBusiness con name, url, logo, address y telephone."),
     "lb_complete": ("LocalBusiness incompleto: faltan campos de contacto/dirección estructurados.",
                     "Los motores de IA locales cruzan nombre + dirección + teléfono (NAP) para validar el negocio.",
-                    "Visibilidad en búsquedas locales por IA ('X cerca de mí').",
+                    "Tu competidor tiene el NAP completo y aparece en búsquedas locales por IA ('X cerca de mí'); tú quedas fuera.",
                     "Completar name, telephone y address con addressLocality en el JSON-LD."),
     "faqpage": ("FAQPage marca preguntas y respuestas en formato legible por máquinas.",
                 "Es la fuente directa de la que ChatGPT/Perplexity extraen respuestas citables.",
-                "Apariciones en respuestas de IA y rich results de Google.",
+                "Tu competidor con FAQPage es la fuente que cita ChatGPT/Perplexity; tus respuestas no se ven.",
                 "Añadir schema FAQPage con 6-10 preguntas reales de clientes y respuestas de 40-60 palabras."),
     "faq_dom": ("Las preguntas del schema deben existir también como contenido visible.",
                 "Schema sin contenido visible se considera engañoso (riesgo de penalización).",
-                "Posible penalización de Google + la IA no encuentra el texto que citar.",
+                "Tu competidor publica preguntas reales que la IA cita; en tu web no hay texto que citar.",
                 "Publicar una sección FAQ visible (details/accordion) con las mismas preguntas del schema."),
     "breadcrumb": ("BreadcrumbList describe la ruta de navegación de la página.",
                    "Ayuda a buscadores e IA a entender la estructura del sitio.",
-                   "Rich results de migas de pan en Google.",
+                   "Tu competidor muestra migas de pan en Google; tu resultado se ve más pobre al lado.",
                    "Añadir schema BreadcrumbList con la jerarquía Inicio → Sección → Página."),
     "robots_txt": ("robots.txt es el fichero que regula el acceso de los bots.",
                    "Sin él no hay control ni declaración de sitemap.",
-                   "Rastreo menos eficiente del sitio.",
+                   "Tu competidor con robots.txt aparece antes que tú en los crawlers de IA.",
                    "Crear /robots.txt con User-agent: * Allow: / y la línea Sitemap:."),
     "sitemap": ("La línea Sitemap: en robots.txt indica dónde está el mapa del sitio.",
                 "Acelera el descubrimiento de páginas nuevas por todos los bots.",
-                "Indexación más lenta de contenido nuevo.",
+                "El contenido nuevo de tu competidor se indexa antes que el tuyo.",
                 "Añadir Sitemap: https://dominio.es/sitemap.xml a robots.txt."),
     "llms_txt": ("llms.txt es el fichero estándar que resume el negocio para los LLMs.",
                  "Es la señal GEO más directa: dice a ChatGPT/Claude/Perplexity qué es el negocio, dónde está y qué ofrece.",
-                 "La oportunidad de controlar cómo te describe la IA — lo hará la competencia que sí lo tenga.",
+                 "Tu competidor con llms.txt le dicta a la IA qué decir de su negocio; de ti, la IA improvisa.",
                  "Crear /llms.txt en Markdown: # Negocio, > resumen, secciones de servicios, zona y contacto."),
     "geo_region": ("Meta geo.region declara la región en código ISO (ej: ES-MD).",
                    "Señal directa de geolocalización para crawlers de IA.",
-                   "Asociación del negocio con su provincia en respuestas locales.",
+                   "Tu competidor está asociado a su provincia en respuestas locales; tú no apareces en la zona.",
                    '<meta name="geo.region" content="ES-XX"> (código ISO 3166-2 de la provincia).'),
     "geo_place": ("Meta geo.placename declara la localidad en texto plano.",
                   "Refuerza la asociación negocio↔ciudad para la IA.",
-                  "Visibilidad en consultas 'en {ciudad}'.",
+                  "Tu competidor aparece en consultas 'en {ciudad}'; tú eres invisible en esa búsqueda.",
                   '<meta name="geo.placename" content="Ciudad">.'),
     "icbm": ("Meta ICBM declara las coordenadas exactas del negocio.",
              "Permite a los motores responder a búsquedas 'cerca de mí'.",
-             "Consultas de proximidad, las de mayor intención de compra.",
+             "Tu competidor gana las búsquedas 'cerca de mí', las de mayor intención de compra; tú las pierdes.",
              '<meta name="ICBM" content="40.4168, -3.7038"> (lat, lng reales del negocio).'),
     "lb_locality": ("Dirección estructurada (addressLocality + addressRegion) en el schema.",
                     "Es el dato que los LLMs citan textualmente al recomendar negocios locales.",
-                    "Aparecer con dirección correcta en las respuestas de IA.",
+                    "Tu competidor aparece con dirección correcta en las respuestas de IA; tú, sin ubicación.",
                     "Completar address en LocalBusiness con streetAddress, addressLocality, addressRegion y postalCode."),
     "geocoords": ("GeoCoordinates añade latitude/longitude al schema del negocio.",
                   "Coordenadas exactas = máxima precisión para resultados de proximidad.",
-                  "Posiciones en búsquedas por cercanía frente a competidores geolocalizados.",
+                  "Tu competidor geolocalizado gana las búsquedas por cercanía; tú quedas detrás.",
                   'Añadir "geo": {"@type":"GeoCoordinates","latitude":…,"longitude":…} al LocalBusiness.'),
     "aeo_faq_schema": ("FAQPage schema (ver sección Schema).",
                        "Los Answer Engines construyen sus respuestas a partir de Q&A estructuradas.",
-                       "Ser la respuesta literal que da la IA cuando preguntan por el sector.",
+                       "Tu competidor es la respuesta literal que da la IA sobre el sector; tú no entras en la respuesta.",
                        "Implementar FAQPage con preguntas que los clientes hacen de verdad."),
     "aeo_faq_dom": ("Sección de preguntas frecuentes visible en la página.",
                     "El contenido visible es lo que la IA puede citar y enlazar.",
-                    "Citas directas en ChatGPT/Perplexity con enlace a la web.",
+                    "Tu competidor recibe citas directas con enlace en ChatGPT/Perplexity; tú no.",
                     "Crear sección FAQ con <details><summary>¿Pregunta?</summary>respuesta</details>."),
     "aeo_howto": ("HowTo schema describe procesos paso a paso.",
                   "Ideal para 'cómo funciona X' — consultas muy frecuentes en IA.",
-                  "Visibilidad en consultas informacionales del sector.",
+                  "Tu competidor responde los '¿cómo funciona…?' en IA; esas consultas se las queda él.",
                   "Añadir schema HowTo al proceso principal del servicio (3-6 pasos)."),
 }
 
@@ -783,7 +784,7 @@ def top_problemas(audit):
             break
         g = FIX_GUIDE.get(c["id"])
         if g and g[2] not in out:
-            out.append("%s — pierde: %s" % (c["label"], g[2][0].lower() + g[2][1:]))
+            out.append("%s — tu competencia que sí lo tiene: %s" % (c["label"], g[2][0].lower() + g[2][1:]))
     return out
 
 
@@ -948,6 +949,36 @@ def plan_de_accion(audit):
     return plan[:5]
 
 
+def business_name_from_title(title, fallback):
+    """Extrae el nombre del negocio del <title> cortando en el primer separador
+    habitual (—, –, -, |, ·, :, »). Si no hay título usable, usa el nombre dado."""
+    if title:
+        name = re.split(r"\s*[\|–—·:»>]\s*|\s+-\s+", title)[0].strip()
+        if len(name) >= 2:
+            return name
+    return fallback
+
+
+# Marcador interno de corte freemium: separa la parte gratuita del informe
+# (resumen ejecutivo + 2 primeras áreas) del resto (plan, ROI, soluciones…).
+GATE_MARKER = "<!--WM_GATE-->"
+
+
+def split_scores(audit, seo_pts, seo_max, geo_pts, geo_max, aeo_pts, aeo_max):
+    """Reparte el score en dos métricas sin doble conteo:
+    - Score Técnico  = SEO + Schema + Robots (sin llms.txt)
+    - Score Control IA = GEO + AEO + llms.txt
+    El llms.txt está en el área 'robots', así que se mueve a Control IA."""
+    llms = next((c for c in audit.checks if c["id"] == "llms_txt"), None)
+    llms_pts = llms["points"] if llms else 0
+    llms_max = llms["max"] if llms else 0
+    tecnico_pts = round(seo_pts - llms_pts, 1)
+    tecnico_max = round(seo_max - llms_max, 1)
+    control_pts = round(geo_pts + aeo_pts + llms_pts, 1)
+    control_max = round(geo_max + aeo_max + llms_max, 1)
+    return tecnico_pts, tecnico_max, control_pts, control_max
+
+
 def render_report(audit, site, ctx):
     nombre, sector, ciudad = ctx["nombre"], ctx["sector"], ctx["ciudad"]
     hoy = date.today().isoformat()
@@ -957,6 +988,11 @@ def render_report(audit, site, ctx):
     aeo_pts, aeo_max = audit.area_score("aeo")
     score = round(seo_pts + geo_pts + aeo_pts)
     emoji, nombre_nivel, desc_nivel = nivel(score)
+
+    # Dos métricas: el llms.txt vive en el área "robots" pero conceptualmente
+    # es Control IA, así que se reasigna para que el global siga siendo la suma.
+    tecnico_pts, tecnico_max, control_pts, control_max = split_scores(
+        audit, seo_pts, seo_max, geo_pts, geo_max, aeo_pts, aeo_max)
 
     plan = plan_de_accion(audit)
     ganancia = round(sum(p["pts"] for p in plan))
@@ -978,7 +1014,15 @@ def render_report(audit, site, ctx):
     w("## 🎯 RESUMEN EJECUTIVO")
     w("*(Para el CEO/dueño del negocio)*")
     w("")
+    w("> **Aparecer en IA no es suficiente — lo importante es controlar lo que dice la IA de ti.** "
+      "Sin las señales correctas, ChatGPT y Grok improvisan. Con ellas, tú decides el mensaje.")
+    w("")
     w("**Puntuación global: %d/100 — %s %s** (%s)" % (score, emoji, nombre_nivel, desc_nivel))
+    w("")
+    w("- 🔧 **Score Técnico** (SEO + Schema + Robots): **%s/%s** %s"
+      % (fmt_pts(tecnico_pts), fmt_pts(tecnico_max), estado_emoji(tecnico_pts, tecnico_max)))
+    w("- 🤖 **Score Control IA** (GEO + AEO + llms.txt): **%s/%s** %s"
+      % (fmt_pts(control_pts), fmt_pts(control_max), estado_emoji(control_pts, control_max)))
     w("")
     w("| Área | Puntuación | Estado |")
     w("|------|-----------|--------|")
@@ -1035,6 +1079,9 @@ def render_report(audit, site, ctx):
     w("> genéricos o a competidores mejor etiquetados.")
     w("")
 
+    # ── Corte freemium: hasta aquí es gratuito (resumen + 2 primeras áreas) ──
+    w(GATE_MARKER)
+
     # ── AEO ──
     w("### AEO — Optimización para Motores de Respuesta")
     w("")
@@ -1085,6 +1132,23 @@ def render_report(audit, site, ctx):
     w("**Por qué ocurre:**")
     w("")
     w(_explicacion_llm(audit, ctx, nombre, sector, ciudad))
+    w("")
+    w("---")
+    w("")
+
+    # ── Verifica tu presencia en IA ahora (links pregenerados) ──
+    negocio = business_name_from_title(ctx.get("title", ""), nombre)
+    q = quote_plus("%s %s" % (negocio, ciudad))
+    w("## 🔎 VERIFICA TU PRESENCIA EN IA AHORA")
+    w("")
+    w("Pregunta a la IA por **%s** y comprueba qué dice de tu negocio:" % negocio)
+    w("")
+    w("- **ChatGPT:** https://chat.openai.com/?q=%s" % q)
+    w("- **Perplexity:** https://www.perplexity.ai/search?q=%s" % q)
+    w("- **Grok:** https://grok.x.com/?q=%s" % q)
+    w("")
+    w("Abre cada enlace y comprueba si la IA te recomienda. Anota el resultado — tras "
+      "implementar el plan, vuelve a comprobarlo en 30 días.")
     w("")
     w("---")
     w("")
@@ -1151,9 +1215,20 @@ def render_report(audit, site, ctx):
         for feat in p["incluye"]:
             w("- %s" % feat)
         w("")
+        w("**Implementación incluida — sin necesidad de programador.**")
+        w("")
         w("→ Más información: %s" % p["url"])
         w("")
     w("¿Tienes preguntas? Solicita una consulta gratuita de 15 minutos: whitemoon.es/auditoria-ia")
+    w("")
+    w("---")
+    w("")
+
+    # ── Verificación en 30 días ──
+    w("## 📅 VERIFICACIÓN EN 30 DÍAS")
+    w("")
+    w("Guarda este informe. En 30 días tras implementar el plan, vuelve a auditar gratis en "
+      "[whitemoon-seo-geo-ia.onrender.com](https://whitemoon-seo-geo-ia.onrender.com) y mide el impacto real.")
     w("")
     w("---")
     w("")
@@ -1161,7 +1236,13 @@ def render_report(audit, site, ctx):
     w("*¿Quieres implementar estas mejoras? Solicitar propuesta sin compromiso: whitemoon.es/auditoria-geo-ia*")
     w("")
 
-    return "\n".join(L), score
+    # Separar parte gratuita (antes del marcador) de la completa.
+    full = "\n".join(L)
+    free, sep, gated = full.partition(GATE_MARKER)
+    if not sep:  # robustez: si no hay marcador, todo es gratuito
+        free, gated = full, ""
+    full = full.replace(GATE_MARKER + "\n", "").replace(GATE_MARKER, "")
+    return full.strip(), free.strip(), gated.strip(), score
 
 
 def _render_fix(w, check):
@@ -1174,7 +1255,7 @@ def _render_fix(w, check):
     que, porque, pierde, como = guide
     w("  - **Qué es:** %s" % que)
     w("  - **Por qué importa:** %s" % porque)
-    w("  - **Qué pierde el negocio:** %s" % pierde)
+    w("  - **Tu competencia que sí lo tiene:** %s" % pierde)
     w("  - **Cómo corregirlo:** %s" % como)
 
 
@@ -1239,7 +1320,7 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports"):
     check_geo(audit, site, ctx)
     check_aeo(audit, site, ctx)
 
-    report, score = render_report(audit, site, ctx)
+    report, report_free, report_gated, score = render_report(audit, site, ctx)
 
     netloc = urlparse(site["url"]).netloc
     if netloc.startswith("www."):
@@ -1257,6 +1338,8 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports"):
     seo_pts, seo_max = audit.area_score("meta", "estructura", "schema", "robots")
     geo_pts, geo_max = audit.area_score("geo")
     aeo_pts, aeo_max = audit.area_score("aeo")
+    tecnico_pts, tecnico_max, control_pts, control_max = split_scores(
+        audit, seo_pts, seo_max, geo_pts, geo_max, aeo_pts, aeo_max)
     errores = [{"check": c["label"], "detail": c["detail"]}
                for c in audit.checks if c["status"] == "error"]
     warnings = [{"check": c["label"], "detail": c["detail"]}
@@ -1268,10 +1351,14 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports"):
         "seo": seo_pts, "seo_max": seo_max,
         "geo": geo_pts, "geo_max": geo_max,
         "aeo": aeo_pts, "aeo_max": aeo_max,
+        "tecnico": tecnico_pts, "tecnico_max": tecnico_max,
+        "control": control_pts, "control_max": control_max,
         "frase": frase_resumen(score, nombre, sector, ciudad),
         "problemas": top_problemas(audit),
         "errores": errores, "warnings": warnings,
         "report_md": report,
+        "report_md_free": report_free,
+        "report_md_gated": report_gated,
         "cliente": nombre, "sector": sector, "ciudad": ciudad, "url": site["url"],
     }
 

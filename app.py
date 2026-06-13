@@ -17,6 +17,7 @@ import re
 from datetime import timedelta
 from pathlib import Path
 
+import requests
 from flask import (Flask, abort, jsonify, redirect, render_template, request,
                    send_file, session, url_for)
 import markdown as md_lib
@@ -28,6 +29,16 @@ REPORTS_DIR = BASE / "reports"
 # En import (no solo en __main__) para que exista también bajo gunicorn
 REPORTS_DIR.mkdir(exist_ok=True)
 PASSWORD = os.environ.get("AUDIT_PASSWORD", "whitemoon2026")
+
+# Supabase: captura de leads del informe completo (freemium). La clave anon es
+# pública por diseño (RLS permite solo INSERT anónimo en leads_web).
+SUPABASE_URL = os.environ.get(
+    "SUPABASE_URL", "https://mlaqtniujnvfxcvcourm.supabase.co").rstrip("/")
+SUPABASE_KEY = os.environ.get(
+    "SUPABASE_KEY",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1s"
+    "YXF0bml1am52ZnhjdmNvdXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4MzUyMzIsImV4cC"
+    "I6MjA5MzQxMTIzMn0.Neh7VUS8ADsxf0DPab0JoJyGXOAXnLIaXzXbKzj2BGs")
 
 app = Flask(__name__)
 # Secret estable entre reinicios (herramienta local mono-usuario)
@@ -120,14 +131,63 @@ def audit():
         seo=result["seo"], seo_max=result["seo_max"],
         geo=result["geo"], geo_max=result["geo_max"],
         aeo=result["aeo"], aeo_max=result["aeo_max"],
+        tecnico=result["tecnico"], tecnico_max=result["tecnico_max"],
+        control=result["control"], control_max=result["control_max"],
         frase=result["frase"],
         problemas=result["problemas"],
         errores_criticos=result["errores"],
         warnings=result["warnings"],
         informe_md=result["report_md"],
         informe_html=render_markdown(result["report_md"]),
+        informe_html_free=render_markdown(result["report_md_free"]),
+        informe_html_gated=render_markdown(result["report_md_gated"]),
         filename=result["filename"],
+        url=result["url"],
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Captura de lead (freemium): desbloquea el informe completo + PDF
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.post("/lead")
+def lead():
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get("nombre") or "").strip()
+    email = (data.get("email") or "").strip()
+    telefono = (data.get("telefono") or "").strip()
+    url = (data.get("url") or "").strip()
+
+    if not all([nombre, email, telefono]):
+        return jsonify(ok=False, error="Nombre, email y teléfono son obligatorios."), 400
+
+    payload = {
+        "nombre": nombre,
+        "email": email,
+        "telefono": telefono,
+        "origen": "auditoria-geo-ia",
+        "sector": "auditoria",
+        "mensaje": "Solicitó informe completo para %s" % (url or "—"),
+    }
+    try:
+        r = requests.post(
+            SUPABASE_URL + "/rest/v1/leads_web",
+            json=payload,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": "Bearer " + SUPABASE_KEY,
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            timeout=15,
+        )
+    except requests.exceptions.RequestException as e:
+        return jsonify(ok=False, error="No se pudo guardar el lead: %s" % e), 502
+
+    if r.status_code not in (200, 201, 204):
+        return jsonify(ok=False,
+                       error="No se pudo guardar el lead (HTTP %d)." % r.status_code), 502
+    return jsonify(ok=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -193,6 +193,13 @@
   // ── Render del resultado ──
   function renderResult(d) {
     result.hidden = false;
+
+    // Estado freemium: bloqueado hasta capturar el lead
+    $("lead-gate").hidden = false;
+    $("unlocked").hidden = true;
+    var leadErr = $("lead-error");
+    if (leadErr) leadErr.hidden = true;
+
     var color = NIVEL_COLOR[d.nivel] || "#7c4dff";
 
     // Gauge semicircular (longitud del arco r=86 → π·86)
@@ -219,6 +226,10 @@
 
     $("frase").textContent = d.frase;
 
+    // Dos métricas: Score Técnico y Score Control IA
+    $("sc-tecnico").textContent = trimNum(d.tecnico) + "/" + trimNum(d.tecnico_max);
+    $("sc-control").textContent = trimNum(d.control) + "/" + trimNum(d.control_max);
+
     // Barras
     setBar("seo", d.seo, d.seo_max);
     setBar("geo", d.geo, d.geo_max);
@@ -234,11 +245,25 @@
       return li;
     });
 
-    // Errores / warnings
+    // Vista previa gratuita: resumen ejecutivo + 2 primeras áreas
+    $("report-free").innerHTML = d.informe_html_free || "";
+
+    result.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // ── Desbloqueo del informe completo tras capturar el lead ──
+  function unlockReport(d) {
+    $("lead-gate").hidden = true;
+    $("unlocked").hidden = false;
+
+    // Resto del informe (plan de acción, ROI, soluciones, verificación…)
+    $("report-gated").innerHTML = d.informe_html_gated || "";
+
+    // Errores / warnings completos (solo tras el lead)
     fillIssues("errores", "errores-wrap", "err-count", "toggle-err", d.errores_criticos, "err", "ERROR");
     fillIssues("warnings", "warnings-wrap", "warn-count", "toggle-warn", d.warnings, "warn", "WARNING");
 
-    result.scrollIntoView({ behavior: "smooth", block: "start" });
+    $("unlocked").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function setBar(area, pts, max) {
@@ -346,6 +371,62 @@
     var orig = btn.textContent;
     btn.textContent = text;
     setTimeout(function () { btn.textContent = orig; }, 1800);
+  }
+
+  // ── Captura de lead (desbloquea informe completo + PDF) ──
+  var leadForm = $("lead-form");
+  if (leadForm) {
+    leadForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (!lastAudit) return;
+
+      var nombre = $("l-nombre").value.trim();
+      var email = $("l-email").value.trim();
+      var telefono = $("l-telefono").value.trim();
+      var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      var ok = true;
+      setLeadErr("nombre", nombre ? "" : "Obligatorio"); if (!nombre) ok = false;
+      setLeadErr("email", emailRe.test(email) ? "" : "Email no válido"); if (!emailRe.test(email)) ok = false;
+      setLeadErr("telefono", telefono.length >= 6 ? "" : "Teléfono no válido"); if (telefono.length < 6) ok = false;
+      if (!ok) return;
+
+      var btn = $("btn-lead");
+      btn.disabled = true;
+      var leadErr = $("lead-error");
+      leadErr.hidden = true;
+
+      fetch("/lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: nombre, email: email, telefono: telefono,
+          url: lastAudit.url || ""
+        })
+      })
+        .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+        .then(function (res) {
+          btn.disabled = false;
+          if (!res.body.ok) {
+            leadErr.textContent = res.body.error || "No se pudo enviar. Inténtalo de nuevo.";
+            leadErr.hidden = false;
+            return;
+          }
+          unlockReport(lastAudit);
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          leadErr.textContent = "No se pudo conectar con el servidor: " + err.message;
+          leadErr.hidden = false;
+        });
+    });
+  }
+
+  function setLeadErr(field, msg) {
+    var el = $("lerr-" + field);
+    if (el) el.textContent = msg;
+    var input = $("l-" + field);
+    if (input) input.classList.toggle("invalid", !!msg);
   }
 
 })();
