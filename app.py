@@ -147,15 +147,15 @@ def audit():
         warnings=result["warnings"],
         informe_md=result["report_md"],
         informe_html=render_markdown(result["report_md"]),
-        informe_html_free=render_markdown(result["report_md_free"]),
-        informe_html_gated=render_markdown(result["report_md_gated"]),
         filename=result["filename"],
         url=result["url"],
     )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Captura de lead (freemium): desbloquea el informe completo + PDF
+# Captura de lead — endpoint conservado para uso futuro.
+# NO se invoca desde el flujo normal: la herramienta ya está protegida por login,
+# así que el informe completo y el PDF se muestran siempre tras autenticarse.
 # ──────────────────────────────────────────────────────────────────────────────
 
 @app.post("/lead")

@@ -1161,11 +1161,6 @@ def business_name_from_title(title, fallback):
     return fallback
 
 
-# Marcador interno de corte freemium: separa la parte gratuita del informe
-# (resumen ejecutivo + 2 primeras áreas) del resto (plan, ROI, soluciones…).
-GATE_MARKER = "<!--WM_GATE-->"
-
-
 def split_scores(audit, seo_pts, seo_max, geo_pts, geo_max, aeo_pts, aeo_max):
     """Reparte el score en dos métricas sin doble conteo:
     - Score Técnico  = SEO + Schema + Robots (sin llms.txt)
@@ -1306,9 +1301,6 @@ def render_report(audit, site, ctx):
     w("> \"%s en %s\" citando a un negocio concreto. Sin ellas, la IA recurre a directorios" % (sector, ciudad))
     w("> genéricos o a competidores mejor etiquetados.")
     w("")
-
-    # ── Corte freemium: hasta aquí es gratuito (resumen + 2 primeras áreas) ──
-    w(GATE_MARKER)
 
     # ── AEO ──
     w("### AEO — Optimización para Motores de Respuesta")
@@ -1530,13 +1522,7 @@ def render_report(audit, site, ctx):
     w("*¿Quieres implementar estas mejoras? Solicitar propuesta sin compromiso: whitemoon.es/auditoria-geo-ia*")
     w("")
 
-    # Separar parte gratuita (antes del marcador) de la completa.
-    full = "\n".join(L)
-    free, sep, gated = full.partition(GATE_MARKER)
-    if not sep:  # robustez: si no hay marcador, todo es gratuito
-        free, gated = full, ""
-    full = full.replace(GATE_MARKER + "\n", "").replace(GATE_MARKER, "")
-    return full.strip(), free.strip(), gated.strip(), score
+    return "\n".join(L), score
 
 
 def _render_fix(w, check):
@@ -1584,7 +1570,7 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports", html_manual=N
     check_aeo(audit, site, ctx)
     check_ads(audit, site)
 
-    report, report_free, report_gated, score = render_report(audit, site, ctx)
+    report, score = render_report(audit, site, ctx)
 
     netloc = urlparse(site["url"]).netloc
     if netloc.startswith("www."):
@@ -1621,8 +1607,6 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports", html_manual=N
         "problemas": top_problemas(audit),
         "errores": errores, "warnings": warnings,
         "report_md": report,
-        "report_md_free": report_free,
-        "report_md_gated": report_gated,
         "cliente": nombre, "sector": sector, "ciudad": ciudad, "url": site["url"],
     }
 

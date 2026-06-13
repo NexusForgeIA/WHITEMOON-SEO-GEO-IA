@@ -333,38 +333,6 @@ select option { background: var(--bg2); color: var(--text); }
 .split-val { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .split-cap { font-size: 11px; color: var(--muted); letter-spacing: 0.3px; }
 
-/* Vista previa gratuita del informe (antes del muro de lead) */
-.report-preview {
-  margin-top: 24px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-/* Muro de captura de lead (freemium) */
-.lead-gate {
-  margin-top: 24px;
-  padding: 26px;
-  border-radius: var(--radius);
-  border: 1px solid rgba(124, 77, 255, 0.35);
-  background:
-    radial-gradient(ellipse 80% 60% at 50% -20%, rgba(124, 77, 255, 0.16), transparent),
-    var(--bg2);
-  position: relative;
-}
-.lead-gate::before {
-  content: "";
-  position: absolute;
-  top: -42px;
-  left: 0;
-  right: 0;
-  height: 42px;
-  background: linear-gradient(to bottom, transparent, var(--card));
-  pointer-events: none;
-}
-.lead-title { font-size: 18px; margin-bottom: 6px; }
-.lead-sub { color: var(--muted); font-size: 13.5px; margin-bottom: 20px; }
-.lead-gate .error-box { margin-top: 14px; }
-
 /* Problemas / errores / warnings */
 .section-title { font-size: 15px; font-weight: 700; margin: 26px 0 12px; }
 
