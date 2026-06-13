@@ -40,6 +40,15 @@ SUPABASE_KEY = os.environ.get(
     "YXF0bml1am52ZnhjdmNvdXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4MzUyMzIsImV4cC"
     "I6MjA5MzQxMTIzMn0.Neh7VUS8ADsxf0DPab0JoJyGXOAXnLIaXzXbKzj2BGs")
 
+# Notificación WhatsApp vía CallMeBot (endpoint público de auditoría gratuita).
+# El apikey es específico del número destino en CallMeBot; sin él, el aviso se
+# omite silenciosamente (la auditoría sigue funcionando).
+CALLMEBOT_PHONE = os.environ.get("CALLMEBOT_PHONE", "+34643199580")
+CALLMEBOT_APIKEY = os.environ.get("CALLMEBOT_APIKEY", "")
+
+# Orígenes permitidos para CORS (formulario público en whitemoon.es)
+CORS_ALLOWED_ORIGINS = {"https://whitemoon.es", "https://www.whitemoon.es"}
+
 app = Flask(__name__)
 # Secret estable entre reinicios (herramienta local mono-usuario)
 app.secret_key = hashlib.sha256(("whitemoon-audit-" + PASSWORD).encode()).hexdigest()
@@ -65,13 +74,27 @@ FILENAME_RE = re.compile(r"^audit-[A-Za-z0-9.-]+-\d{4}-\d{2}-\d{2}\.md$")
 
 @app.before_request
 def require_login():
-    if request.endpoint in ("login", "static"):
+    # El endpoint público de auditoría gratuita no requiere login.
+    if request.endpoint in ("login", "static", "audit_public"):
         return None
     if not session.get("auth"):
         if request.method == "POST" or request.path.startswith("/audit"):
             return jsonify(ok=False, error="No autenticado. Recarga la página e inicia sesión."), 401
         return redirect(url_for("login", next=request.path))
     return None
+
+
+@app.after_request
+def add_cors_headers(resp):
+    """CORS solo para los orígenes permitidos (formulario público en whitemoon.es)."""
+    origin = request.headers.get("Origin", "")
+    if origin in CORS_ALLOWED_ORIGINS:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
+        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Max-Age"] = "86400"
+    return resp
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -196,6 +219,84 @@ def lead():
         return jsonify(ok=False,
                        error="No se pudo guardar el lead (HTTP %d)." % r.status_code), 502
     return jsonify(ok=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Auditoría pública gratuita (sin login) — para el formulario de whitemoon.es
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _save_public_lead(nombre, telefono, url, score):
+    """Guarda el lead de la auditoría gratuita en Supabase (best-effort)."""
+    payload = {
+        "nombre": nombre,
+        "telefono": telefono,
+        "origen": "auditoria-gratuita-web",
+        "mensaje": "Auditó: %s · Score: %d/100" % (url, score),
+    }
+    try:
+        requests.post(
+            SUPABASE_URL + "/rest/v1/leads_web",
+            json=payload,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": "Bearer " + SUPABASE_KEY,
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            timeout=15,
+        )
+    except requests.exceptions.RequestException as e:
+        app.logger.warning("No se pudo guardar el lead público: %s", e)
+
+
+def _notify_whatsapp(nombre, telefono, url, score):
+    """Avisa por WhatsApp vía CallMeBot (best-effort; se omite sin apikey)."""
+    if not CALLMEBOT_APIKEY:
+        app.logger.info("CALLMEBOT_APIKEY no configurado: aviso de WhatsApp omitido.")
+        return
+    text = ("🔍 Nueva auditoría gratuita\n👤 %s · 📱 %s\n🌐 %s\n📊 Score: %d/100"
+            % (nombre, telefono, url, score))
+    try:
+        requests.get(
+            "https://api.callmebot.com/whatsapp.php",
+            params={"phone": CALLMEBOT_PHONE, "text": text, "apikey": CALLMEBOT_APIKEY},
+            timeout=15,
+        )
+    except requests.exceptions.RequestException as e:
+        app.logger.warning("No se pudo enviar el aviso de WhatsApp: %s", e)
+
+
+@app.post("/audit-public")
+def audit_public():
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip()
+    nombre = (data.get("nombre") or "").strip()
+    telefono = (data.get("telefono") or "").strip()
+
+    if not all([url, nombre, telefono]):
+        return jsonify(ok=False, error="Faltan campos: url, nombre y telefono son obligatorios."), 400
+    if not re.match(r"^(https?://)?[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}", url) \
+            and "localhost" not in url:
+        return jsonify(ok=False, error="La URL no parece válida (ej: https://cliente.es)."), 400
+
+    try:
+        # Sector/ciudad no se piden en el formulario público; se auditan igualmente.
+        result = run_audit_full(url, nombre, "auditoría", "", out_dir=str(REPORTS_DIR))
+    except AuditError as e:
+        return jsonify(ok=False, error=str(e)), 502
+    except Exception as e:
+        return jsonify(ok=False, error="Error inesperado durante la auditoría: %s" % e), 500
+
+    score = result["score"]
+    _save_public_lead(nombre, telefono, url, score)
+    _notify_whatsapp(nombre, telefono, url, score)
+
+    return jsonify(
+        score=score,
+        score_tecnico=result["tecnico"],
+        score_control_ia=result["control"],
+        top3_problemas=result["problemas"][:3],
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────

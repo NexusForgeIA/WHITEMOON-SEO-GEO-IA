@@ -107,6 +107,26 @@ Qué permite la interfaz:
   abre el diálogo de impresión del navegador con estilos de impresión limpios)
 - Historial de informes con filtro por nivel, ver/PDF/eliminar
 
+#### Endpoint público `POST /audit-public` (sin login)
+
+Pensado para un formulario de captación en **whitemoon.es**. No requiere login
+y tiene CORS abierto para `whitemoon.es` / `www.whitemoon.es`.
+
+- **Recibe** JSON: `{url, nombre, telefono}`
+- **Ejecuta** la auditoría completa
+- **Devuelve** solo: `{score, score_tecnico, score_control_ia, top3_problemas}`
+- **Guarda** el lead en Supabase `leads_web` (`origen = auditoria-gratuita-web`,
+  `mensaje = "Auditó: [url] · Score: [score]/100"`)
+- **Avisa** por WhatsApp vía CallMeBot al número de la agencia
+
+Variables de entorno para el aviso de WhatsApp (best-effort; si falta el apikey
+el aviso se omite y la auditoría sigue funcionando):
+
+| Variable | Por defecto |
+|----------|-------------|
+| `CALLMEBOT_PHONE` | `+34643199580` |
+| `CALLMEBOT_APIKEY` | *(vacío — obtener en callmebot.com)* |
+
 #### Endpoint /lead (Supabase) — opcional, sin usar en el flujo normal
 
 Existe un endpoint `POST /lead` que inserta en la tabla `leads_web` del
