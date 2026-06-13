@@ -251,19 +251,22 @@ def _save_public_lead(nombre, telefono, url, score):
 
 def _notify_whatsapp(nombre, telefono, url, score, score_tecnico, score_control_ia):
     """Avisa por WhatsApp vía CallMeBot (best-effort; se omite sin apikey)."""
-    if not CALLMEBOT_APIKEY:
-        app.logger.info("CALLMEBOT_APIKEY no configurado: aviso de WhatsApp omitido.")
-        return
     text = ("🔍 Auditoría GEO/SEO Gratuita\n"
             "👤 %s · 📱 %s\n"
             "🌐 URL: %s\n"
             "📊 Score: %d/100\n"
             "🔧 Técnico: %s · 🤖 Control IA: %s"
             % (nombre, telefono, url, score, score_tecnico, score_control_ia))
+    # DEBUG temporal: verificar que CALLMEBOT_APIKEY se lee del entorno
+    apikey = os.environ.get("CALLMEBOT_APIKEY", "")
+    print(f"[DEBUG-WA] apikey={apikey!r} phone={CALLMEBOT_PHONE!r} msg={text[:50]!r}", flush=True)
+    if not apikey:
+        app.logger.info("CALLMEBOT_APIKEY no configurado: aviso de WhatsApp omitido.")
+        return
     try:
         requests.get(
             "https://api.callmebot.com/whatsapp.php",
-            params={"phone": CALLMEBOT_PHONE, "text": text, "apikey": CALLMEBOT_APIKEY},
+            params={"phone": CALLMEBOT_PHONE, "text": text, "apikey": apikey},
             timeout=15,
         )
     except requests.exceptions.RequestException as e:
