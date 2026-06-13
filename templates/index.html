@@ -89,6 +89,18 @@
       </div>
       <div>
         <p class="frase" id="frase"></p>
+        <div class="score-split">
+          <div class="split-chip tecnico">
+            <span class="split-label">🔧 Score Técnico</span>
+            <span class="split-val" id="sc-tecnico">—</span>
+            <span class="split-cap">SEO · Schema · Robots</span>
+          </div>
+          <div class="split-chip control">
+            <span class="split-label">🤖 Score Control IA</span>
+            <span class="split-val" id="sc-control">—</span>
+            <span class="split-cap">GEO · AEO · llms.txt</span>
+          </div>
+        </div>
         <div class="bars">
           <div class="bar-row">
             <span class="bar-label">SEO técnico</span>
@@ -109,27 +121,65 @@
       </div>
     </div>
 
-    <div class="result-actions">
-      <a class="btn primary" id="btn-ver" href="#">Ver informe completo</a>
-      <button class="btn" id="btn-pdf">Descargar PDF</button>
-      <button class="btn" id="btn-copy">Copiar Markdown</button>
-    </div>
-
     <div id="problemas-wrap" hidden>
       <h2 class="section-title">Problemas más urgentes</h2>
       <ul class="problema-list" id="problemas"></ul>
     </div>
 
-    <div id="errores-wrap" hidden>
-      <h2 class="section-title">Errores críticos (<span id="err-count"></span>)</h2>
-      <ul class="issue-list" id="errores"></ul>
-      <button class="toggle-link" id="toggle-err" hidden></button>
+    <!-- Vista previa gratuita: resumen ejecutivo + 2 primeras áreas -->
+    <article class="report-body report-preview" id="report-free"></article>
+
+    <!-- Muro de captura de lead (freemium) -->
+    <div class="lead-gate" id="lead-gate">
+      <h2 class="lead-title">🔓 Desbloquea tu plan de acción completo + PDF</h2>
+      <p class="lead-sub">Has visto el resumen y las 2 primeras áreas. Déjanos tus datos y accede
+        al plan de acción priorizado, el ROI estimado y la descarga en PDF — sin compromiso.</p>
+      <form id="lead-form" novalidate>
+        <div class="form-grid">
+          <div>
+            <label for="l-nombre">Nombre</label>
+            <input type="text" id="l-nombre" placeholder="Tu nombre" autocomplete="name" required>
+            <div class="field-error" id="lerr-nombre"></div>
+          </div>
+          <div>
+            <label for="l-telefono">Teléfono</label>
+            <input type="tel" id="l-telefono" placeholder="600 000 000" autocomplete="tel" required>
+            <div class="field-error" id="lerr-telefono"></div>
+          </div>
+          <div class="full">
+            <label for="l-email">Email</label>
+            <input type="email" id="l-email" placeholder="tu@email.com" autocomplete="email" required>
+            <div class="field-error" id="lerr-email"></div>
+          </div>
+          <div class="full">
+            <button type="submit" class="btn primary big" id="btn-lead">Ver informe completo + PDF</button>
+          </div>
+        </div>
+        <div class="error-box" id="lead-error" hidden></div>
+      </form>
     </div>
 
-    <div id="warnings-wrap" hidden>
-      <h2 class="section-title">Warnings (<span id="warn-count"></span>)</h2>
-      <ul class="issue-list" id="warnings"></ul>
-      <button class="toggle-link" id="toggle-warn" hidden></button>
+    <!-- Contenido desbloqueado tras el lead -->
+    <div id="unlocked" hidden>
+      <article class="report-body" id="report-gated"></article>
+
+      <div id="errores-wrap" hidden>
+        <h2 class="section-title">Errores críticos (<span id="err-count"></span>)</h2>
+        <ul class="issue-list" id="errores"></ul>
+        <button class="toggle-link" id="toggle-err" hidden></button>
+      </div>
+
+      <div id="warnings-wrap" hidden>
+        <h2 class="section-title">Warnings (<span id="warn-count"></span>)</h2>
+        <ul class="issue-list" id="warnings"></ul>
+        <button class="toggle-link" id="toggle-warn" hidden></button>
+      </div>
+
+      <div class="result-actions">
+        <a class="btn primary" id="btn-ver" href="#">Ver informe completo</a>
+        <button class="btn" id="btn-pdf">Descargar PDF</button>
+        <button class="btn" id="btn-copy">Copiar Markdown</button>
+      </div>
     </div>
   </section>
 

@@ -95,11 +95,31 @@ AUDIT_PASSWORD="mi-password" python app.py
 Qué permite la interfaz:
 
 - Lanzar auditorías desde un formulario (URL, cliente, sector, ciudad)
-- Ver el score animado con gauge + barras SEO/GEO/AEO y errores/warnings
+- Ver el score animado con gauge + barras SEO/GEO/AEO, desglosado además en
+  **Score Técnico** (SEO + Schema + Robots) y **Score Control IA**
+  (GEO + AEO + llms.txt)
+- **Freemium / captura de lead:** muestra gratis el score, el resumen ejecutivo
+  y las 2 primeras áreas; para desbloquear el plan de acción completo y el PDF
+  pide nombre, email y teléfono y los guarda en Supabase (`leads_web`,
+  `origen = auditoria-geo-ia`, `sector = auditoria`)
+- Bloque **Verifica tu presencia en IA ahora** con enlaces pregenerados a
+  ChatGPT, Perplexity y Grok usando el nombre del negocio + ciudad
 - Ver el informe completo renderizado, copiar el Markdown
 - Descargar PDF (con `weasyprint` instalado genera el PDF en servidor; si no,
   abre el diálogo de impresión del navegador con estilos de impresión limpios)
 - Historial de informes con filtro por nivel, ver/PDF/eliminar
+
+#### Captura de leads (Supabase)
+
+El muro de lead inserta en la tabla `leads_web` del proyecto Supabase vía su
+API REST. Las credenciales llevan un valor por defecto en el código (la clave
+`anon` es pública por diseño; la política RLS solo permite `INSERT` anónimo).
+Para apuntar a otro proyecto, define las variables de entorno:
+
+| Variable | Por defecto |
+|----------|-------------|
+| `SUPABASE_URL` | `https://mlaqtniujnvfxcvcourm.supabase.co` |
+| `SUPABASE_KEY` | clave `anon` del proyecto |
 
 ### Despliegue en Render
 
@@ -107,7 +127,9 @@ El repo incluye `render.yaml`: al crear un **Web Service Python** en Render
 apuntando a este repo se configura solo (build `pip install -r
 requirements.txt`, arranque con gunicorn). Configura la variable de entorno
 `AUDIT_PASSWORD` en el panel de Render — es la única barrera de acceso, usa
-una password fuerte.
+una password fuerte. Opcionalmente, `SUPABASE_URL` y `SUPABASE_KEY` para la
+captura de leads (traen valores por defecto funcionales). Render redespliega
+automáticamente tras cada merge a `main`.
 
 > Aviso: el disco de Render es efímero — los informes en `reports/` se
 > pierden en cada deploy/reinicio. Descarga el PDF o el Markdown de cada
@@ -150,8 +172,8 @@ técnicas que los motores de IA usan para verificar y citar negocios locales.
 ```
 
 El informe completo incluye además: análisis técnico check a check (con
-*qué es / por qué importa / qué pierde el negocio / cómo corregirlo* en cada
-error), estado de acceso de cada bot de IA, la sección **Evidencia en Motores
+*qué es / por qué importa / tu competencia que sí lo tiene / cómo corregirlo*
+en cada error), estado de acceso de cada bot de IA, la sección **Evidencia en Motores
 de IA** con las queries exactas para que el cliente compruebe en ChatGPT /
 Grok / Perplexity que no aparece, el plan de acción priorizado con puntos
 ganados por acción y la tabla de implementación con precios de WhiteMoon.
