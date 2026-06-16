@@ -228,6 +228,7 @@
     setBar("seo", d.seo, d.seo_max);
     setBar("geo", d.geo, d.geo_max);
     setBar("aeo", d.aeo, d.aeo_max);
+    setBar("autoridad", d.autoridad, d.autoridad_max);
 
     // Botones
     $("btn-ver").href = "/reports/" + encodeURIComponent(d.filename);

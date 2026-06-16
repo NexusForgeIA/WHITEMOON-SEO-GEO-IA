@@ -162,6 +162,7 @@ def audit():
         seo=result["seo"], seo_max=result["seo_max"],
         geo=result["geo"], geo_max=result["geo_max"],
         aeo=result["aeo"], aeo_max=result["aeo_max"],
+        autoridad=result["autoridad"], autoridad_max=result["autoridad_max"],
         tecnico=result["tecnico"], tecnico_max=result["tecnico_max"],
         control=result["control"], control_max=result["control_max"],
         frase=result["frase"],
