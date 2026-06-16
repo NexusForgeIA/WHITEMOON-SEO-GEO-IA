@@ -112,11 +112,9 @@ def fetch_site(url, html_manual=None):
 def _fetch_optional(url):
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-        print(f"[DEBUG] {url} → {r.status_code} | {r.text[:200]!r}")
         if r.status_code == 200 and "<html" not in r.text[:500].lower():
             return r.text
-    except requests.exceptions.RequestException as e:
-        print(f"[DEBUG] {url} → EXCEPTION: {e}")
+    except requests.exceptions.RequestException:
         pass
     return None
 
