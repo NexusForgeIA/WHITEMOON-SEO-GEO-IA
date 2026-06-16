@@ -318,9 +318,11 @@ def audit_public():
 
 def render_markdown(text):
     # El informe menciona etiquetas como <title> o <head> de forma literal:
-    # escapamos '<' para que no se interpreten como HTML real
+    # escapamos '<' para que no se interpreten como HTML real.
+    # fenced_code: las gráficas ASCII van en bloques ```text y deben salir
+    # monoespaciadas (<pre>) para que las barras queden alineadas.
     return md_lib.markdown(text.replace("<", "&lt;"),
-                           extensions=["tables", "nl2br", "sane_lists"])
+                           extensions=["tables", "nl2br", "sane_lists", "fenced_code"])
 
 
 def safe_report_path(filename):

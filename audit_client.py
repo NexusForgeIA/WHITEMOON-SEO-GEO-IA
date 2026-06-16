@@ -12,8 +12,7 @@ Uso:
 Genera: reports/audit-{dominio}-{fecha}.md
 """
 
-import base64
-import io
+import gc
 import json
 import os
 import re
@@ -820,7 +819,7 @@ def check_pagespeed(a, site, ctx):
     try:
         r = requests.get(PAGESPEED_ENDPOINT, params={
             "url": site["url"], "strategy": "mobile", "key": PAGESPEED_API_KEY,
-        }, timeout=TIMEOUT)
+        }, timeout=15)
         data = r.json()
     except (requests.exceptions.RequestException, ValueError):
         a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "warn", 0, 8,
@@ -934,12 +933,12 @@ DIRECTORY_DOMAINS = ("paginasamarillas", "yelp.", "tripadvisor", "idealista", "f
                      "twitter.", "x.com", "google.", "wikipedia.", "amazon.", "tuugo", "11870")
 
 
-def _google_search_html(query, num=10):
+def _google_search_html(query, num=10, timeout=TIMEOUT_SHORT):
     """HTML de una búsqueda en Google (best-effort). None si falla o bloquea."""
     try:
         r = requests.get("https://www.google.es/search",
                          params={"q": query, "num": num, "hl": "es", "gl": "es"},
-                         headers=BROWSER_HEADERS, timeout=TIMEOUT_SHORT)
+                         headers=BROWSER_HEADERS, timeout=timeout)
     except requests.exceptions.RequestException:
         return None
     if r.status_code != 200:
@@ -969,9 +968,9 @@ def _extract_organic_urls(html, exclude=(), limit=10):
     return urls
 
 
-def _directory_presence(nombre, dom):
+def _directory_presence(nombre, dom, timeout=5):
     """→ True (aparece) | False (no aparece) | None (no verificable)."""
-    html = _google_search_html('"%s" site:%s' % (nombre, dom))
+    html = _google_search_html('"%s" site:%s' % (nombre, dom), timeout=timeout)
     if html is None:
         return None
     low = html.lower()
@@ -986,22 +985,24 @@ def _directory_presence(nombre, dom):
     return bool(re.search(r'https?://[^"\'>]*%s' % re.escape(dom), low))
 
 
-DIR_TIME_BUDGET = 25  # segundos máx. para todas las consultas de directorios
+DIR_MAX_BUSQUEDAS = 2  # nº máx. de consultas de red (las demás se marcan "no verificado")
 
 
 def check_directorios(a, ctx):
     nombre, sector = ctx["nombre"], ctx["sector"]
     skey = sector_key(sector)
+    # Se evalúan 4 directorios (área = 4 pts fijos) pero solo se consultan en red
+    # los 2 primeros, para limitar tiempo y memoria; el resto queda "no verificado".
     dirs = (DIRECTORIOS_BASE + DIRECTORIOS_SECTOR.get(skey, DIRECTORIOS_DEFAULT))[:4]
     ctx["directorios"] = {}
-    start = time.monotonic()
-    for dom in dirs:
+    for i, dom in enumerate(dirs):
         present = None
-        if time.monotonic() - start < DIR_TIME_BUDGET:
+        if i < DIR_MAX_BUSQUEDAS:
             try:
-                present = _directory_presence(nombre, dom)
+                present = _directory_presence(nombre, dom, timeout=5)
             except Exception:
                 present = None
+            gc.collect()
         ctx["directorios"][dom] = present
         if present is True:
             a.add("directorios", "dir_" + dom, "Presencia en %s" % dom, "ok", 1, 1, "Ficha detectada")
@@ -1036,11 +1037,12 @@ def _quick_site_checks(url):
     }
 
 
-COMP_TIME_BUDGET = 35  # segundos máx. para analizar competidores
+COMP_TIME_BUDGET = 25  # segundos máx. para analizar competidores
+COMP_MAX = 2           # nº máx. de competidores analizados (límite de memoria/tiempo)
 
 
 def check_competidores(audit, site, ctx):
-    """Top 5 competidores orgánicos para '{sector} {ciudad}' + checks básicos.
+    """Hasta 2 competidores orgánicos para '{sector} {ciudad}' + checks básicos.
     Informativo y best-effort: cualquier fallo deja la lista vacía sin romper nada."""
     sector, ciudad, url_cliente = ctx["sector"], ctx["ciudad"], ctx["url"]
     client_host = urlparse(url_cliente).netloc.lower().replace("www.", "")
@@ -1052,10 +1054,11 @@ def check_competidores(audit, site, ctx):
             if not any(s in low for s in ("/sorry/", "consent.google", "unusual traffic")):
                 exclude = DIRECTORY_DOMAINS + (client_host,)
                 start = time.monotonic()
-                for u in _extract_organic_urls(html, exclude=exclude, limit=12):
-                    if len(competidores) >= 5 or time.monotonic() - start > COMP_TIME_BUDGET:
+                for u in _extract_organic_urls(html, exclude=exclude, limit=8):
+                    if len(competidores) >= COMP_MAX or time.monotonic() - start > COMP_TIME_BUDGET:
                         break
                     checks = _quick_site_checks(u)
+                    gc.collect()  # libera el HTML/sopa del competidor tras cada request
                     if checks and checks["host"] != client_host:
                         competidores.append(checks)
     except Exception:
@@ -1290,111 +1293,65 @@ AREA_TITLES = [
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# GRÁFICAS DEL INFORME (matplotlib → PNG base64 embebido en el markdown)
+# GRÁFICAS DEL INFORME (ASCII/Unicode puro — sin dependencias pesadas)
 # ──────────────────────────────────────────────────────────────────────────────
+# Antes se usaba matplotlib, pero cargarlo (+ numpy) disparaba la RAM del worker
+# en Render y lo mataba por OOM. Las barras en texto pesan ~0 y se ven bien tanto
+# en el Markdown del informe como renderizadas en la web (dentro de un <pre>).
 
-CHART_BG = "#0e0e16"
-CHART_FG = "#f0f0f5"
-CHART_TRACK = "#1e1e2e"
-CHART_GREEN = "#00d4aa"
-CHART_GOLD = "#f5c842"
-CHART_RED = "#ff4444"
-CHART_DPI = 96
-
-
-def _color_pct(pct):
-    return CHART_GREEN if pct >= 0.8 else (CHART_GOLD if pct >= 0.5 else CHART_RED)
-
-
-def _fig_b64(plt, fig):
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=CHART_DPI, facecolor=fig.get_facecolor())
-    plt.close(fig)
-    return base64.b64encode(buf.getvalue()).decode("ascii")
+def _ascii_bar(pts, maxp, width=22):
+    ratio = (pts / maxp) if maxp else 0.0
+    ratio = 0.0 if ratio < 0 else (1.0 if ratio > 1 else ratio)
+    filled = int(round(ratio * width))
+    return "█" * filled + "░" * (width - filled)
 
 
 def generate_charts(audit_data):
-    """Genera las 3 gráficas del informe como PNG en base64.
+    """Genera las gráficas del informe como bloques de texto monoespaciado.
 
-    audit_data: seo/geo/aeo/autoridad/cro/directorios y sus _max, score y los contadores
-    checks_ok/checks_warn/checks_error.
-    Devuelve {'areas', 'roi', 'checks'} → string base64 de cada PNG.
-    Si matplotlib no está disponible devuelve {} y el informe sale sin gráficas.
+    audit_data: seo/geo/aeo/autoridad/cro/directorios y sus _max, score y los
+    contadores checks_ok/checks_warn/checks_error.
+    Devuelve {'areas', 'checks'} → string (varias líneas) listo para un bloque
+    de código. Nunca lanza: ante cualquier problema devuelve {}.
     """
     try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
+        areas = [
+            ("SEO Técnico", audit_data["seo"], audit_data["seo_max"]),
+            ("GEO Local IA", audit_data["geo"], audit_data["geo_max"]),
+            ("AEO Respuestas", audit_data["aeo"], audit_data["aeo_max"]),
+            ("Autoridad", audit_data.get("autoridad", 0), audit_data.get("autoridad_max", 0)),
+            ("Conversión (CRO)", audit_data.get("cro", 0), audit_data.get("cro_max", 0)),
+            ("Directorios", audit_data.get("directorios", 0), audit_data.get("directorios_max", 0)),
+        ]
+        label_w = max(len(a[0]) for a in areas)
+        area_lines = [
+            "%-*s │%s│ %s/%s" % (label_w, name, _ascii_bar(pts, maxp),
+                                 fmt_pts(pts), fmt_pts(maxp))
+            for name, pts, maxp in areas
+        ]
+
+        ok = audit_data.get("checks_ok", 0)
+        warn = audit_data.get("checks_warn", 0)
+        err = audit_data.get("checks_error", 0)
+        total = max(ok + warn + err, 1)
+        width = 24
+
+        def _seg(n, ch):
+            return ch * int(round(n / total * width))
+
+        bar = (_seg(ok, "█") + _seg(warn, "▓") + _seg(err, "░"))
+        bar = (bar + "░" * width)[:width]
+        score = audit_data.get("score", 0)
+        check_lines = [
+            "Puntuación global: %d/100" % score,
+            "│%s│" % _ascii_bar(score, 100),
+            "",
+            "Checks: │%s│" % bar,
+            "✅ OK: %d    ⚠️ Aviso: %d    ❌ Fallo: %d" % (ok, warn, err),
+        ]
+        return {"areas": "\n".join(area_lines), "checks": "\n".join(check_lines)}
     except Exception:
         return {}
-
-    # Los hatch (texturas) diferencian las series también en impresión B/N
-    rc = {
-        "font.family": "monospace",
-        "text.color": CHART_FG,
-        "axes.labelcolor": CHART_FG,
-        "xtick.color": CHART_FG,
-        "ytick.color": CHART_FG,
-        "axes.edgecolor": CHART_TRACK,
-        "axes.titlecolor": CHART_FG,
-        "hatch.linewidth": 1.0,
-    }
-    charts = {}
-    with matplotlib.rc_context(rc):
-
-        # ── 1. Puntuación por área (barras horizontales, 600x360) ──
-        fig, ax = plt.subplots(figsize=(600 / CHART_DPI, 360 / CHART_DPI), dpi=CHART_DPI)
-        fig.patch.set_facecolor(CHART_BG)
-        ax.set_facecolor(CHART_BG)
-        areas = [  # de abajo arriba: SEO queda en la primera fila visible
-            ("Directorios", audit_data.get("directorios", 0), audit_data.get("directorios_max", 0), "oo"),
-            ("Conversión (CRO)", audit_data.get("cro", 0), audit_data.get("cro_max", 0), "\\\\"),
-            ("Autoridad", audit_data.get("autoridad", 0), audit_data.get("autoridad_max", 0), "++"),
-            ("AEO", audit_data["aeo"], audit_data["aeo_max"], ".."),
-            ("GEO", audit_data["geo"], audit_data["geo_max"], "xx"),
-            ("SEO Técnico", audit_data["seo"], audit_data["seo_max"], "//"),
-        ]
-        ys = range(len(areas))
-        ax.barh(ys, [a[2] for a in areas], color=CHART_TRACK, height=0.6)
-        for y, (_, pts, maxp, hatch) in zip(ys, areas):
-            ax.barh(y, pts, color=_color_pct(pts / maxp if maxp else 1), height=0.6,
-                    hatch=hatch, edgecolor=CHART_BG, linewidth=0.8)
-            ax.text(maxp + 1, y, "%s/%s" % (fmt_pts(pts), fmt_pts(maxp)),
-                    va="center", fontsize=9, color=CHART_FG)
-        ax.set_yticks(list(ys))
-        ax.set_yticklabels([a[0] for a in areas], fontsize=9)
-        ax.set_xticks([])
-        ax.set_xlim(0, max(a[2] for a in areas) * 1.22)
-        ax.tick_params(length=0)
-        for sp in ax.spines.values():
-            sp.set_visible(False)
-        ax.set_title("Puntuación por área", fontsize=12, pad=12)
-        fig.tight_layout()
-        charts["areas"] = _fig_b64(plt, fig)
-
-        # ── 2. Resumen de checks (donut, 400x400) ──
-        fig, ax = plt.subplots(figsize=(400 / CHART_DPI, 400 / CHART_DPI), dpi=CHART_DPI)
-        fig.patch.set_facecolor(CHART_BG)
-        ax.set_facecolor(CHART_BG)
-        datos = [("OK", audit_data["checks_ok"], CHART_GREEN, "//"),
-                 ("Warning", audit_data["checks_warn"], CHART_GOLD, ".."),
-                 ("Fallo", audit_data["checks_error"], CHART_RED, "xx")]
-        datos = [d for d in datos if d[1] > 0] or [("Sin checks", 1, CHART_TRACK, "")]
-        wedges, _ = ax.pie([d[1] for d in datos], colors=[d[2] for d in datos],
-                           startangle=90, counterclock=False,
-                           wedgeprops=dict(width=0.32, edgecolor=CHART_BG, linewidth=1.5))
-        for wedge, d in zip(wedges, datos):
-            wedge.set_hatch(d[3])
-        ax.text(0, 0.05, "%d/100" % audit_data["score"], ha="center", va="center",
-                fontsize=20, fontweight="bold", color=CHART_FG)
-        ax.text(0, -0.17, "score", ha="center", va="center", fontsize=9, color=CHART_FG)
-        ax.set_title("Resumen de checks", fontsize=12, pad=10)
-        fig.legend(wedges, ["%s (%d)" % (d[0], d[1]) for d in datos],
-                   loc="lower center", ncol=3, frameon=False, fontsize=8)
-        fig.subplots_adjust(bottom=0.12, top=0.88)
-        charts["checks"] = _fig_b64(plt, fig)
-
-    return charts
 
 
 def estado_emoji(pts, maxp):
@@ -1725,9 +1682,15 @@ def render_report(audit, site, ctx):
     w = L.append
 
     def w_chart(key, alt):
-        if charts.get(key):
-            w("![%s](data:image/png;base64,%s)" % (alt, charts[key]))
-            w("")
+        block = charts.get(key)
+        if not block:
+            return
+        w("**%s:**" % alt)
+        w("")
+        w("```text")
+        w(block)
+        w("```")
+        w("")
 
     # ── Cabecera ──
     w("# Auditoría GEO IA — %s" % nombre)
@@ -2239,6 +2202,12 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports", html_manual=N
                for c in audit.checks if c["status"] == "error"]
     warnings = [{"check": c["label"], "detail": c["detail"]}
                 for c in audit.checks if c["status"] == "warn"]
+
+    # Libera de inmediato la memoria de la auditoría (HTML/sopa/sitemaps) para
+    # mantener bajo el footprint del worker entre peticiones.
+    site.pop("soup", None)
+    site.pop("_sitemap_urls", None)
+    gc.collect()
 
     return {
         "path": str(path), "filename": path.name, "score": score,
