@@ -11,13 +11,16 @@ para entregar al cliente.
 
 | Bloque | Puntos | Qué mide |
 |--------|--------|----------|
-| **SEO técnico** | 50 | Meta tags (12), estructura HTML (12), Schema JSON-LD (16), robots/acceso bots IA + llms.txt (10) |
-| **GEO** — visibilidad local IA | 20 | 5 señales de geolocalización (geo.region, geo.placename, ICBM, dirección estructurada, GeoCoordinates) × 4 pts |
-| **AEO** — respuestas en IA | 30 | FAQPage schema, FAQ visible en el DOM, nº de preguntas, HowTo |
+| **SEO técnico** | 63 | Meta tags (12), estructura HTML (16, scripts defer/async = 6), Schema JSON-LD (27, LocalBusiness completo = 10, FAQPage = 10), robots/acceso bots IA + llms.txt recomendado (8) |
+| **GEO** — visibilidad local IA | 11 | geo.region + geo.placename + ICBM juntos (4, señales de bajo impacto), dirección estructurada (4), GeoCoordinates (3) |
+| **AEO** — respuestas en IA | 13 | FAQPage schema, FAQ visible en el DOM, nº de preguntas, HowTo |
+| **Presencia y Autoridad** (E-E-A-T) | 13 | Google Business Profile (3), página "Quiénes somos" (3), casos/testimonios (3), arquitectura SEO local (4) |
 | **TOTAL** | **100** | |
 
 > Nota: el bloque de robots y acceso para bots IA (GPTBot, ClaudeBot,
 > PerplexityBot, Google-Extended) y el llms.txt puntúan dentro del SEO técnico.
+> El llms.txt es **recomendado** (no crítico): si los bots no están bloqueados,
+> acceden igualmente.
 
 ## Instalación
 
@@ -133,9 +136,10 @@ una password fuerte.
 
 | Área | Puntuación | Estado |
 |------|-----------|--------|
-| SEO técnico | 33/50 | ⚠️ |
-| GEO — Visibilidad local IA | 4/20 | ❌ |
-| AEO — Respuestas en IA | 10/30 | ❌ |
+| SEO técnico | 41/63 | ⚠️ |
+| GEO — Visibilidad local IA | 4/11 | ❌ |
+| AEO — Respuestas en IA | 4/13 | ❌ |
+| Presencia y Autoridad | 0/13 | ❌ |
 
 **En una frase:** Hoy, cuando alguien pregunta a ChatGPT o Perplexity por
 "clínica dental en Majadahonda", Clínica Dental Sonrisa es invisible: la web

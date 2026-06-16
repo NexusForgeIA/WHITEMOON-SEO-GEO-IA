@@ -248,7 +248,7 @@ def fmt_pts(v):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BLOQUE 2 — SEO TÉCNICO (50 pts: META 12 + ESTRUCTURA 12 + SCHEMA 16 + ROBOTS 10)
+# BLOQUE 2 — SEO TÉCNICO (63 pts: META 12 + ESTRUCTURA 16 + SCHEMA 27 + ROBOTS 8)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def check_meta_tags(a, site, ctx):
@@ -375,25 +375,26 @@ def check_structure(a, site):
               "%d de %d imágenes con alt" % (len(with_alt), len(imgs)))
         with_dims = [i for i in imgs if i.get("width") and i.get("height")]
         ratio_d = len(with_dims) / len(imgs)
-        pts_d = 1.5 if ratio_d == 1 else (0.75 if ratio_d >= 0.8 else 0)
+        pts_d = 1 if ratio_d == 1 else (0.5 if ratio_d >= 0.8 else 0)
         a.add("estructura", "img_dims", "Imágenes con width y height",
-              "ok" if ratio_d == 1 else ("warn" if ratio_d >= 0.8 else "error"), pts_d, 1.5,
+              "ok" if ratio_d == 1 else ("warn" if ratio_d >= 0.8 else "error"), pts_d, 1,
               "%d de %d imágenes con dimensiones (evita CLS)" % (len(with_dims), len(imgs)))
     else:
         a.add("estructura", "img_alt", "Imágenes con atributo alt", "info", 3, 3, "Sin imágenes <img>")
-        a.add("estructura", "img_dims", "Imágenes con width y height", "info", 1.5, 1.5, "Sin imágenes <img>")
+        a.add("estructura", "img_dims", "Imágenes con width y height", "info", 1, 1, "Sin imágenes <img>")
 
     ext_scripts = [s for s in soup.find_all("script", src=True)]
     if ext_scripts:
         deferred = [s for s in ext_scripts
                     if s.has_attr("defer") or s.has_attr("async") or s.get("type") == "module"]
         ratio_s = len(deferred) / len(ext_scripts)
-        pts_s = 1.5 if ratio_s == 1 else (0.75 if ratio_s >= 0.5 else 0)
+        pts_s = 6 if ratio_s == 1 else (3 if ratio_s >= 0.5 else 0)
         a.add("estructura", "scripts", "Scripts externos con defer/async",
-              "ok" if ratio_s == 1 else ("warn" if ratio_s >= 0.5 else "error"), pts_s, 1.5,
-              "%d de %d scripts no bloquean el renderizado" % (len(deferred), len(ext_scripts)))
+              "ok" if ratio_s == 1 else ("warn" if ratio_s >= 0.5 else "error"), pts_s, 6,
+              "%d de %d scripts no bloquean el renderizado (impacto real en Core Web Vitals)"
+              % (len(deferred), len(ext_scripts)))
     else:
-        a.add("estructura", "scripts", "Scripts externos con defer/async", "info", 1.5, 1.5,
+        a.add("estructura", "scripts", "Scripts externos con defer/async", "info", 6, 6,
               "Sin scripts externos")
 
 
@@ -402,18 +403,18 @@ def check_schema(a, site, ctx):
     ctx["jsonld_nodes"] = nodes
 
     if total > 0:
-        a.add("schema", "jsonld", "Al menos 1 bloque JSON-LD", "ok", 3, 3,
+        a.add("schema", "jsonld", "Al menos 1 bloque JSON-LD", "ok", 2, 2,
               "%d bloques <script type=\"application/ld+json\">" % total)
     else:
-        a.add("schema", "jsonld", "Al menos 1 bloque JSON-LD", "error", 0, 3,
+        a.add("schema", "jsonld", "Al menos 1 bloque JSON-LD", "error", 0, 2,
               "La web no tiene datos estructurados — los motores de IA no pueden 'entenderla'")
     if total > 0 and invalid == 0:
-        a.add("schema", "jsonld_valid", "Todos los bloques JSON-LD son válidos", "ok", 2, 2)
+        a.add("schema", "jsonld_valid", "Todos los bloques JSON-LD son válidos", "ok", 1, 1)
     elif total > 0:
-        a.add("schema", "jsonld_valid", "Todos los bloques JSON-LD son válidos", "error", 0, 2,
+        a.add("schema", "jsonld_valid", "Todos los bloques JSON-LD son válidos", "error", 0, 1,
               "%d de %d bloques con JSON inválido (no parseable)" % (invalid, total))
     else:
-        a.add("schema", "jsonld_valid", "Todos los bloques JSON-LD son válidos", "error", 0, 2, "Sin bloques")
+        a.add("schema", "jsonld_valid", "Todos los bloques JSON-LD son válidos", "error", 0, 1, "Sin bloques")
 
     types = sorted({t for n in nodes for t in node_types(n)})
     ctx["schema_types"] = types
@@ -423,10 +424,10 @@ def check_schema(a, site, ctx):
     org = find_nodes(nodes, "Organization")
     lbs = find_localbusiness(nodes)
     if org or lbs:
-        a.add("schema", "org", "Organization o LocalBusiness", "ok", 3, 3,
+        a.add("schema", "org", "Organization o LocalBusiness", "ok", 2, 2,
               ", ".join(sorted({t for n in (org + lbs) for t in node_types(n)})))
     else:
-        a.add("schema", "org", "Organization o LocalBusiness", "error", 0, 3, "No presente")
+        a.add("schema", "org", "Organization o LocalBusiness", "error", 0, 2, "No presente")
 
     lb_complete = False
     lb_detail = "No hay LocalBusiness"
@@ -449,12 +450,12 @@ def check_schema(a, site, ctx):
         ctx["lb_node"] = lb
     a.add("schema", "lb_complete", "LocalBusiness completo (name, address, telephone, addressLocality)",
           "ok" if lb_complete else ("warn" if lbs else "error"),
-          3 if lb_complete else (1 if lbs else 0), 3, lb_detail)
+          10 if lb_complete else (4 if lbs else 0), 10, lb_detail)
 
     faq = find_nodes(nodes, "FAQPage")
     ctx["faq_schema"] = bool(faq)
     a.add("schema", "faqpage", "FAQPage presente", "ok" if faq else "error",
-          2 if faq else 0, 2, "" if faq else "Sin FAQPage — clave para aparecer en respuestas de IA")
+          10 if faq else 0, 10, "" if faq else "Sin FAQPage — fuente directa para LLMs")
 
     visible_qs = count_visible_faq(site["soup"])
     ctx["visible_faq"] = visible_qs
@@ -469,7 +470,7 @@ def check_schema(a, site, ctx):
 
     bc = find_nodes(nodes, "BreadcrumbList")
     a.add("schema", "breadcrumb", "BreadcrumbList presente", "ok" if bc else "warn",
-          2 if bc else 0, 2, "" if bc else "No presente")
+          1 if bc else 0, 1, "" if bc else "No presente")
 
 
 def check_robots(a, site, ctx):
@@ -499,34 +500,35 @@ def check_robots(a, site, ctx):
 
     llms = site["llms"]
     if llms and llms.strip():
-        a.add("robots", "llms_txt", "llms.txt existe (crítico para GEO)", "ok", 4, 4,
+        a.add("robots", "llms_txt", "llms.txt (recomendado para GEO)", "ok", 2, 2,
               "%d líneas" % len(llms.strip().splitlines()))
         ctx["llms_ok"] = True
     else:
-        a.add("robots", "llms_txt", "llms.txt existe (crítico para GEO)", "error", 0, 4,
-              "No existe — los LLMs no tienen un resumen estructurado del negocio")
+        a.add("robots", "llms_txt", "llms.txt (recomendado para GEO)", "warn", 0, 2,
+              "No existe — útil pero no crítico: da a los LLMs un resumen estructurado del negocio")
         ctx["llms_ok"] = False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BLOQUE 3 — GEO (20 pts: 5 señales × 4)
+# BLOQUE 3 — GEO (11 pts: metas básicas 4 + lb_locality 4 + geocoords 3)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def check_geo(a, site, ctx):
     soup = site["soup"]
     nodes = ctx.get("jsonld_nodes", [])
 
+    # geo.region + geo.placename + ICBM: señales de bajo impacto real → 4 pts juntas
     region = meta_content(soup, name="geo.region")
-    a.add("geo", "geo_region", "Meta geo.region (ej: ES-MD)", "ok" if region else "error",
-          4 if region else 0, 4, region or "No declarada")
+    a.add("geo", "geo_region", "Meta geo.region (ej: ES-MD)", "ok" if region else "warn",
+          1.5 if region else 0, 1.5, region or "No declarada")
 
     place = meta_content(soup, name="geo.placename")
-    a.add("geo", "geo_place", "Meta geo.placename", "ok" if place else "error",
-          4 if place else 0, 4, place or "No declarada")
+    a.add("geo", "geo_place", "Meta geo.placename", "ok" if place else "warn",
+          1.5 if place else 0, 1.5, place or "No declarada")
 
     icbm = meta_content(soup, name="ICBM")
-    a.add("geo", "icbm", "Meta ICBM con coordenadas", "ok" if icbm else "error",
-          4 if icbm else 0, 4, icbm or "No declarada")
+    a.add("geo", "icbm", "Meta ICBM con coordenadas", "ok" if icbm else "warn",
+          1 if icbm else 0, 1, icbm or "No declarada")
 
     lb_geo_ok = False
     for lb in find_localbusiness(nodes):
@@ -546,35 +548,184 @@ def check_geo(a, site, ctx):
             coords_ok = True
             break
     a.add("geo", "geocoords", "GeoCoordinates en schema (latitude/longitude)",
-          "ok" if coords_ok else "error", 4 if coords_ok else 0, 4,
+          "ok" if coords_ok else "error", 3 if coords_ok else 0, 3,
           "" if coords_ok else "Sin coordenadas en datos estructurados")
 
     ctx["geo_signals"] = sum(1 for c in a.checks if c["area"] == "geo" and c["status"] == "ok")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BLOQUE 4 — AEO (30 pts)
+# BLOQUE 4 — AEO (13 pts)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def check_aeo(a, site, ctx):
     faq_schema = ctx.get("faq_schema", False)
     a.add("aeo", "aeo_faq_schema", "FAQPage schema presente", "ok" if faq_schema else "error",
-          10 if faq_schema else 0, 10,
+          2 if faq_schema else 0, 2,
           "" if faq_schema else "Sin FAQPage los motores de respuesta no tienen Q&A que citar")
 
     visible = ctx.get("visible_faq", 0)
     a.add("aeo", "aeo_faq_dom", "Preguntas FAQ visibles en el DOM", "ok" if visible else "error",
-          8 if visible else 0, 8,
+          5 if visible else 0, 5,
           "%d preguntas detectadas" % visible if visible else "Sin FAQ visible (details/.faq/accordion)")
 
-    q_pts = round(min(visible, 10) * 0.6, 1)
+    q_pts = round(min(visible, 10) * 0.3, 1)
     a.add("aeo", "aeo_faq_count", "Número de preguntas FAQ (máx. 10 puntuables)",
-          "ok" if visible >= 6 else ("warn" if visible else "error"), q_pts, 6,
-          "%d preguntas → %s/6 pts" % (visible, fmt_pts(q_pts)))
+          "ok" if visible >= 6 else ("warn" if visible else "error"), q_pts, 3,
+          "%d preguntas → %s/3 pts" % (visible, fmt_pts(q_pts)))
 
     howto = bool(find_nodes(ctx.get("jsonld_nodes", []), "HowTo"))
     a.add("aeo", "aeo_howto", "HowTo schema presente", "ok" if howto else "warn",
-          6 if howto else 0, 6, "" if howto else "Sin HowTo (recomendado si hay procesos/servicios paso a paso)")
+          3 if howto else 0, 3, "" if howto else "Sin HowTo (recomendado si hay procesos/servicios paso a paso)")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BLOQUE 4.5 — PRESENCIA Y AUTORIDAD (13 pts: GBP 3 + about 3 + casos 3 + arquitectura 4)
+# ──────────────────────────────────────────────────────────────────────────────
+
+ABOUT_PATTERNS = ("/about", "/quienes-somos", "/quienes_somos", "/sobre-nosotros",
+                  "/sobre_nosotros", "/sobre-mi", "/equipo", "/nosotros")
+ABOUT_TEXTS = ("sobre nosotros", "quienes somos", "sobre mi", "nuestro equipo", "el equipo")
+CASOS_PATTERNS = ("/casos", "/caso-", "/casos-de-exito", "/casos-exito", "/exito",
+                  "/testimonios", "/clientes", "/portfolio", "/proyectos")
+
+
+def _internal_links(soup, root):
+    """Devuelve lista de (path_en_minúsculas, texto) de enlaces internos."""
+    out = []
+    host = urlparse(root).netloc.lower().replace("www.", "")
+    for a_tag in soup.find_all("a", href=True):
+        href = (a_tag.get("href") or "").strip()
+        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        p = urlparse(urljoin(root + "/", href))
+        if p.netloc and p.netloc.lower().replace("www.", "") != host:
+            continue
+        out.append((p.path.lower(), a_tag.get_text(" ", strip=True)))
+    return out
+
+
+def _fetch_sitemap_urls(site):
+    """Recupera <loc> del sitemap (declarado en robots.txt o /sitemap.xml). Best-effort."""
+    sitemaps = [l.split(":", 1)[1].strip()
+                for l in (site["robots"] or "").splitlines()
+                if l.strip().lower().startswith("sitemap:")]
+    if not sitemaps:
+        sitemaps = [site["root"] + "/sitemap.xml"]
+    urls, seen, queue = [], set(), list(sitemaps)
+    while queue and len(seen) < 5:
+        sm = queue.pop(0)
+        if sm in seen:
+            continue
+        seen.add(sm)
+        try:
+            r = requests.get(sm, headers=HEADERS, timeout=TIMEOUT)
+        except requests.exceptions.RequestException:
+            continue
+        if r.status_code != 200:
+            continue
+        locs = re.findall(r"<loc>\s*(.*?)\s*</loc>", r.text, re.I | re.S)
+        if "<sitemapindex" in r.text.lower():
+            queue.extend(locs[:10])
+        else:
+            urls.extend(locs)
+    return urls
+
+
+def _detect_gbp(nombre, ciudad):
+    """Best-effort: busca el panel de conocimiento de Google para el negocio.
+    → True (ficha detectada) | False (no detectada) | None (no verificable)."""
+    query = ("%s %s" % (nombre or "", ciudad or "")).strip()
+    if not query:
+        return None
+    try:
+        r = requests.get("https://www.google.com/search",
+                         params={"q": query, "hl": "es", "gl": "es"},
+                         headers=HEADERS, timeout=TIMEOUT)
+    except requests.exceptions.RequestException:
+        return None
+    if r.status_code != 200:
+        return None
+    html = r.text.lower()
+    # Si Google muestra el muro de consentimiento o un captcha, no es verificable
+    if "consent.google" in html or "unusual traffic" in html or "/sorry/" in str(r.url).lower():
+        return None
+    markers = ("kp-wholepage", "knowledge-panel", "kno-rdesc", "kc:/local",
+               "/maps/place", "kp-header", "kno-ecr-pt")
+    return any(m in html for m in markers)
+
+
+def check_autoridad(a, site, ctx):
+    soup = site["soup"]
+    nombre, ciudad = ctx["nombre"], ctx["ciudad"]
+    nodes = ctx.get("jsonld_nodes", [])
+    links = _internal_links(soup, site["root"])
+
+    # 1) Google Business Profile (3 pts)
+    gbp = _detect_gbp(nombre, ciudad)
+    if gbp is True:
+        a.add("autoridad", "gbp", "Ficha de Google Business Profile activa", "ok", 3, 3,
+              'Panel de conocimiento detectado para "%s %s"' % (nombre, ciudad))
+    elif gbp is False:
+        a.add("autoridad", "gbp", "Ficha de Google Business Profile activa", "error", 0, 3,
+              "No se detecta ficha GBP — crear/optimizar el perfil en google.com/business")
+    else:
+        a.add("autoridad", "gbp", "Ficha de Google Business Profile activa", "warn", 0, 3,
+              "No verificable automáticamente (Google limitó la consulta) — revisar manualmente")
+
+    # 2) Página "Quiénes somos" / "Sobre nosotros" (3 pts) — señal E-E-A-T básica
+    about_texts = tuple(_norm(t) for t in ABOUT_TEXTS)
+    about = False
+    for path, text in links:
+        if any(p in path for p in ABOUT_PATTERNS) or any(t in _norm(text) for t in about_texts):
+            about = True
+            break
+    a.add("autoridad", "about", 'Página "Quiénes somos" / "Sobre nosotros"',
+          "ok" if about else "error", 3 if about else 0, 3,
+          "Detectada en la navegación" if about
+          else "No se encuentra — añade una página de equipo/historia (señal E-E-A-T básica)")
+
+    # 3) Casos de éxito / testimonios (3 pts)
+    casos = any(p in path for path, _ in links for p in CASOS_PATTERNS)
+    has_review = bool(find_nodes(nodes, "Review") or find_nodes(nodes, "AggregateRating"))
+    casos = casos or has_review
+    detalle_casos = ("schema Review/AggregateRating presente" if has_review
+                     else "Sección de casos/testimonios detectada") if casos \
+        else "No se encuentran casos de éxito ni testimonios — refuerzan la confianza y el E-E-A-T"
+    a.add("autoridad", "casos", "Casos de éxito o testimonios",
+          "ok" if casos else "error", 3 if casos else 0, 3, detalle_casos)
+
+    # 4) Arquitectura SEO local (4 pts) — páginas por ciudad/zona
+    ciudad_norm = _norm(ciudad)
+    ciudad_slug = ciudad_norm.replace(" ", "-")
+    # Patrones típicos de landings locales: "servicio-en-zona", secciones de zonas, etc.
+    ZONE_HINTS = ("-en-", "/en-", "/zona", "/zonas", "/areas", "/area-",
+                  "/cobertura", "/donde-estamos", "/localidades")
+
+    def _is_local(path, text=""):
+        if path in ("", "/"):
+            return False
+        pn = _norm(path)
+        if ciudad_norm and (ciudad_norm in pn or ciudad_slug in path or ciudad_norm in _norm(text)):
+            return True
+        return any(h in path for h in ZONE_HINTS)
+
+    local_pages = {path for path, text in links if _is_local(path, text)}
+    for u in _fetch_sitemap_urls(site):
+        path = urlparse(u).path.lower()
+        if _is_local(path):
+            local_pages.add(path)
+    n_local = len(local_pages)
+    ctx["local_pages"] = n_local
+    if n_local >= 2:
+        a.add("autoridad", "arquitectura", "Arquitectura SEO local (páginas por zona)", "ok", 4, 4,
+              "%d páginas locales detectadas" % n_local)
+    elif n_local == 1:
+        a.add("autoridad", "arquitectura", "Arquitectura SEO local (páginas por zona)", "warn", 2, 4,
+              "Solo 1 página local — crea páginas por cada zona de cobertura")
+    else:
+        a.add("autoridad", "arquitectura", "Arquitectura SEO local (páginas por zona)", "error", 0, 4,
+              "Sin páginas locales por zona — clave para captar búsquedas '%s en {zona}'" % ciudad)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -728,6 +879,22 @@ FIX_GUIDE = {
                   "Ideal para 'cómo funciona X' — consultas muy frecuentes en IA.",
                   "Visibilidad en consultas informacionales del sector.",
                   "Añadir schema HowTo al proceso principal del servicio (3-6 pasos)."),
+    "gbp": ("Google Business Profile es la ficha del negocio en Google Maps y el buscador.",
+            "Es la principal fuente que la IA y Google cruzan para validar un negocio local (NAP, reseñas, horario).",
+            "Presencia en el mapa, en 'cerca de mí' y en las respuestas locales de IA.",
+            "Crear/reclamar la ficha en google.com/business: categoría, dirección, teléfono, fotos y reseñas."),
+    "about": ("Una página 'Quiénes somos' presenta al equipo, la experiencia y la historia.",
+              "Es una señal E-E-A-T básica: demuestra que detrás del negocio hay personas reales y expertas.",
+              "Confianza de usuarios y motores de IA, que priorizan entidades con autoría verificable.",
+              "Publicar una página /sobre-nosotros con equipo, años de experiencia y enlaces a perfiles."),
+    "casos": ("Casos de éxito y testimonios muestran resultados reales con clientes.",
+              "Aportan prueba social citable y refuerzan el E-E-A-T del negocio.",
+              "Conversión y credibilidad frente a competidores sin pruebas verificables.",
+              "Crear /casos o /testimonios y marcar Review/AggregateRating en JSON-LD."),
+    "arquitectura": ("La arquitectura SEO local son páginas dedicadas a cada zona de cobertura.",
+                     "Permiten posicionar y ser citado por la IA para cada ciudad/barrio donde opera el negocio.",
+                     "Tráfico y recomendaciones de IA en cada zona, no solo en la ciudad principal.",
+                     "Crear una página por zona con contenido propio (servicio + zona), enlazada desde el menú."),
 }
 
 
@@ -770,6 +937,10 @@ def top_problemas(audit):
         "bot_ClaudeBot": "Claude tiene prohibido leer la web: el negocio no puede aparecer en sus respuestas.",
         "bot_PerplexityBot": "Perplexity tiene prohibido leer la web: el negocio no puede aparecer en sus respuestas.",
         "aeo_howto": "No se explica ningún proceso paso a paso: se pierden las consultas '¿cómo funciona…?' en IA.",
+        "gbp": "El negocio no tiene (o no se detecta) ficha de Google Business: pierde el mapa, las reseñas y las búsquedas 'cerca de mí'.",
+        "about": "No hay página 'Quiénes somos': falta la señal de confianza (E-E-A-T) que la IA usa para recomendar entidades verificables.",
+        "casos": "No hay casos de éxito ni testimonios: falta la prueba social que convierte y que la IA puede citar.",
+        "arquitectura": "No hay páginas locales por zona: el negocio solo compite en su ciudad principal y pierde las zonas de alrededor.",
     }
     fallos = sorted(audit.failed(), key=lambda c: c["max"] - c["points"], reverse=True)
     out = []
@@ -798,6 +969,10 @@ ACTIONS = [
      "Añadir señales GEO (geo.region, geo.placename, ICBM, GeoCoordinates)", "Alto", "Bajo"),
     (["bot_GPTBot", "bot_ClaudeBot", "bot_PerplexityBot", "bot_Google-Extended"],
      "Desbloquear bots de IA en robots.txt", "Alto", "Bajo"),
+    (["gbp"], "Crear/optimizar la ficha de Google Business Profile", "Alto", "Bajo"),
+    (["arquitectura"], "Crear páginas locales por zona de cobertura", "Alto", "Medio"),
+    (["about"], 'Publicar página "Quiénes somos" (equipo y experiencia)', "Medio", "Bajo"),
+    (["casos"], "Añadir casos de éxito / testimonios (+ schema Review)", "Medio", "Medio"),
     (["title", "title_len", "title_kw", "desc", "desc_len", "canonical"],
      "Optimizar title, meta description y canonical", "Medio", "Bajo"),
     (["og_td", "og_img", "og_dims", "twitter"],
@@ -955,7 +1130,8 @@ def render_report(audit, site, ctx):
     seo_pts, seo_max = audit.area_score("meta", "estructura", "schema", "robots")
     geo_pts, geo_max = audit.area_score("geo")
     aeo_pts, aeo_max = audit.area_score("aeo")
-    score = round(seo_pts + geo_pts + aeo_pts)
+    aut_pts, aut_max = audit.area_score("autoridad")
+    score = round(seo_pts + geo_pts + aeo_pts + aut_pts)
     emoji, nombre_nivel, desc_nivel = nivel(score)
 
     plan = plan_de_accion(audit)
@@ -985,6 +1161,7 @@ def render_report(audit, site, ctx):
     w("| SEO técnico | %s/%s | %s |" % (fmt_pts(seo_pts), fmt_pts(seo_max), estado_emoji(seo_pts, seo_max)))
     w("| GEO — Visibilidad local IA | %s/%s | %s |" % (fmt_pts(geo_pts), fmt_pts(geo_max), estado_emoji(geo_pts, geo_max)))
     w("| AEO — Respuestas en IA | %s/%s | %s |" % (fmt_pts(aeo_pts), fmt_pts(aeo_max), estado_emoji(aeo_pts, aeo_max)))
+    w("| Presencia y Autoridad | %s/%s | %s |" % (fmt_pts(aut_pts), fmt_pts(aut_max), estado_emoji(aut_pts, aut_max)))
     w("")
     w("**En una frase:** %s" % frase_resumen(score, nombre, sector, ciudad))
     w("")
@@ -1023,12 +1200,17 @@ def render_report(audit, site, ctx):
     # ── GEO ──
     w("### GEO — Señales de Geolocalización IA")
     w("")
-    w("Señales detectadas: **%d/5** → **%s/20 puntos**" % (ctx.get("geo_signals", 0), fmt_pts(geo_pts)))
+    w("Señales detectadas: **%d/5** → **%s/%s puntos**"
+      % (ctx.get("geo_signals", 0), fmt_pts(geo_pts), fmt_pts(geo_max)))
     w("")
     for c in [c for c in audit.checks if c["area"] == "geo"]:
         detail = " — %s" % c["detail"] if c["detail"] else ""
         w("- %s **%s**%s" % (STATUS_EMOJI[c["status"]], c["label"], detail))
         _render_fix(w, c)
+    w("")
+    w("> **Nota sobre geo.region / geo.placename / ICBM:** señales de geolocalización")
+    w("> básicas — impacto moderado, fáciles de implementar. Suman en conjunto, pero el")
+    w("> peso real lo aportan la dirección estructurada (LocalBusiness) y la ficha de Google.")
     w("")
     w("> Estas 5 señales son las que permiten a un motor de IA responder con confianza a")
     w("> \"%s en %s\" citando a un negocio concreto. Sin ellas, la IA recurre a directorios" % (sector, ciudad))
@@ -1042,6 +1224,21 @@ def render_report(audit, site, ctx):
         detail = " — %s" % c["detail"] if c["detail"] else ""
         w("- %s **%s**%s" % (STATUS_EMOJI[c["status"]], c["label"], detail))
         _render_fix(w, c)
+    w("")
+
+    # ── Presencia y Autoridad ──
+    w("### Presencia y Autoridad (E-E-A-T)")
+    w("")
+    w("Puntuación: **%s/%s puntos**" % (fmt_pts(aut_pts), fmt_pts(aut_max)))
+    w("")
+    for c in [c for c in audit.checks if c["area"] == "autoridad"]:
+        detail = " — %s" % c["detail"] if c["detail"] else ""
+        w("- %s **%s**%s" % (STATUS_EMOJI[c["status"]], c["label"], detail))
+        _render_fix(w, c)
+    w("")
+    w("> La autoridad (Google Business, equipo visible, casos reales y arquitectura local)")
+    w("> es lo que distingue a un negocio recomendable de uno más: son las señales E-E-A-T")
+    w("> que la IA cruza para decidir a quién cita.")
     w("")
 
     # ── Robots ──
@@ -1061,6 +1258,10 @@ def render_report(audit, site, ctx):
                   "no_robots": "⚠️ Sin robots.txt (acceso implícito)"}
     for bot in AI_BOTS:
         w("| %s | %s | %s |" % (bot, bot_motor[bot], estado_txt[ctx["bots"].get(bot, "implicit")]))
+    w("")
+    w("> **Nota sobre los bots de IA:** si no están bloqueados, los bots acceden igualmente.")
+    w("> Declarar `Allow` es una buena práctica pero no imprescindible. Lo crítico es **no**")
+    w("> bloquearlos por error en robots.txt.")
     w("")
     w("---")
     w("")
@@ -1103,6 +1304,28 @@ def render_report(audit, site, ctx):
         w("*(Estimación honesta — suma exacta de los puntos de los checks corregidos, no inflada)*")
     else:
         w("No hay acciones pendientes de alto impacto: la web supera todos los checks puntuables.")
+    w("")
+    w("---")
+    w("")
+
+    # ── Hoja de ruta 6 meses ──
+    w("## 🗓️ HOJA DE RUTA 6 MESES")
+    w("")
+    w("### Mes 1-2 — Base técnica")
+    w("- Implementar LocalBusiness completo con NAP")
+    w("- Añadir FAQPage con 8-10 preguntas reales")
+    w("- Optimizar velocidad (defer scripts, imágenes WebP)")
+    w("")
+    w("### Mes 3-4 — Contenido y autoridad local")
+    w("- Crear páginas locales por zona de cobertura")
+    w("- Blog con 8-10 artículos sobre %s en %s" % (sector, ciudad))
+    w("- Optimizar/crear ficha Google Business con fotos y reseñas")
+    w("")
+    w("### Mes 5-6 — E-E-A-T y backlinks")
+    w('- Página "Quiénes somos" con equipo y experiencia real')
+    w("- Casos de éxito con datos reales")
+    w("- Backlinks locales (prensa, directorios, colaboradores)")
+    w("- Reseñas verificadas en Google Business")
     w("")
     w("---")
     w("")
@@ -1238,6 +1461,7 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports"):
     check_robots(audit, site, ctx)
     check_geo(audit, site, ctx)
     check_aeo(audit, site, ctx)
+    check_autoridad(audit, site, ctx)
 
     report, score = render_report(audit, site, ctx)
 
@@ -1257,6 +1481,7 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports"):
     seo_pts, seo_max = audit.area_score("meta", "estructura", "schema", "robots")
     geo_pts, geo_max = audit.area_score("geo")
     aeo_pts, aeo_max = audit.area_score("aeo")
+    aut_pts, aut_max = audit.area_score("autoridad")
     errores = [{"check": c["label"], "detail": c["detail"]}
                for c in audit.checks if c["status"] == "error"]
     warnings = [{"check": c["label"], "detail": c["detail"]}
@@ -1268,6 +1493,7 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports"):
         "seo": seo_pts, "seo_max": seo_max,
         "geo": geo_pts, "geo_max": geo_max,
         "aeo": aeo_pts, "aeo_max": aeo_max,
+        "autoridad": aut_pts, "autoridad_max": aut_max,
         "frase": frase_resumen(score, nombre, sector, ciudad),
         "problemas": top_problemas(audit),
         "errores": errores, "warnings": warnings,
