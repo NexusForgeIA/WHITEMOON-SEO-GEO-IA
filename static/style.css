@@ -159,7 +159,8 @@ main.wide { max-width: 1100px; }
 
 label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
 
-input[type="text"], input[type="url"], input[type="password"], select {
+input[type="text"], input[type="url"], input[type="password"],
+input[type="email"], input[type="tel"], select {
   width: 100%;
   font-family: inherit;
   font-size: 15px;
@@ -185,6 +186,31 @@ select {
   padding-right: 38px;
 }
 select option { background: var(--bg2); color: var(--text); }
+
+/* Modo HTML directo (uso interno): discreto, colapsado por defecto */
+.html-directo summary {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.html-directo textarea {
+  width: 100%;
+  margin-top: 8px;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  outline: none;
+  resize: vertical;
+}
+.html-directo textarea:focus {
+  border-color: var(--p);
+  box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.18);
+}
 
 .field-error { color: var(--red); font-size: 12px; margin-top: 4px; min-height: 16px; }
 
@@ -290,6 +316,23 @@ select option { background: var(--bg2); color: var(--text); }
 .bar-pts { font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 
 .result-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 26px; }
+
+/* Dos métricas: Score Técnico / Score Control IA */
+.score-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.split-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+}
+.split-chip.tecnico { border-left: 3px solid var(--p); }
+.split-chip.control { border-left: 3px solid var(--g); }
+.split-label { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.split-val { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.split-cap { font-size: 11px; color: var(--muted); letter-spacing: 0.3px; }
 
 /* Problemas / errores / warnings */
 .section-title { font-size: 15px; font-weight: 700; margin: 26px 0 12px; }
@@ -406,6 +449,7 @@ select option { background: var(--bg2); color: var(--text); }
   .card { padding: 20px 18px; }
   .form-grid { grid-template-columns: 1fr; }
   .result-header { grid-template-columns: 1fr; text-align: center; }
+  .score-split { grid-template-columns: 1fr; text-align: left; }
   .bars { text-align: left; }
   .bar-row { grid-template-columns: 1fr; gap: 5px; }
   .bar-pts { text-align: left; }

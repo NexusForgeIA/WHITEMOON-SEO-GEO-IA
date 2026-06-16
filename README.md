@@ -98,11 +98,52 @@ AUDIT_PASSWORD="mi-password" python app.py
 Qué permite la interfaz:
 
 - Lanzar auditorías desde un formulario (URL, cliente, sector, ciudad)
-- Ver el score animado con gauge + barras SEO/GEO/AEO y errores/warnings
+- Ver el score animado con gauge + barras SEO/GEO/AEO, desglosado además en
+  **Score Técnico** (SEO + Schema + Robots) y **Score Control IA**
+  (GEO + AEO + llms.txt)
+- El informe completo y el PDF se muestran **siempre** tras el login (la
+  herramienta ya está protegida por password, sin muros adicionales)
+- Bloque **Verifica tu presencia en IA ahora** con enlaces pregenerados a
+  ChatGPT, Perplexity y Grok usando el nombre del negocio + ciudad
 - Ver el informe completo renderizado, copiar el Markdown
 - Descargar PDF (con `weasyprint` instalado genera el PDF en servidor; si no,
   abre el diálogo de impresión del navegador con estilos de impresión limpios)
 - Historial de informes con filtro por nivel, ver/PDF/eliminar
+
+#### Endpoint público `POST /audit-public` (sin login)
+
+Pensado para un formulario de captación en **whitemoon.es**. No requiere login
+y tiene CORS abierto para `whitemoon.es` / `www.whitemoon.es`.
+
+- **Recibe** JSON: `{url, nombre, telefono}`
+- **Ejecuta** la auditoría completa
+- **Devuelve** solo: `{score, score_tecnico, score_control_ia, top3_problemas}`
+- **Guarda** el lead en Supabase `leads_web` (`origen = auditoria-gratuita-web`,
+  `mensaje = "Auditó: [url] · Score: [score]/100"`)
+- **Avisa** por WhatsApp vía CallMeBot al número de la agencia
+
+Variables de entorno para el aviso de WhatsApp (best-effort; si falta el apikey
+el aviso se omite y la auditoría sigue funcionando):
+
+| Variable | Por defecto |
+|----------|-------------|
+| `CALLMEBOT_PHONE` | `+34643199580` |
+| `CALLMEBOT_APIKEY` | *(vacío — obtener en callmebot.com)* |
+
+#### Endpoint /lead (Supabase) — opcional, sin usar en el flujo normal
+
+Existe un endpoint `POST /lead` que inserta en la tabla `leads_web` del
+proyecto Supabase (`origen = auditoria-geo-ia`, `sector = auditoria`). **No se
+llama desde la interfaz** — se conserva por si se quiere reactivar una captura
+de leads en el futuro. Las credenciales llevan un valor por defecto en el
+código (la clave `anon` es pública por diseño; la política RLS solo permite
+`INSERT` anónimo). Para apuntar a otro proyecto, define las variables de
+entorno:
+
+| Variable | Por defecto |
+|----------|-------------|
+| `SUPABASE_URL` | `https://mlaqtniujnvfxcvcourm.supabase.co` |
+| `SUPABASE_KEY` | clave `anon` del proyecto |
 
 ### Despliegue en Render
 
@@ -110,7 +151,9 @@ El repo incluye `render.yaml`: al crear un **Web Service Python** en Render
 apuntando a este repo se configura solo (build `pip install -r
 requirements.txt`, arranque con gunicorn). Configura la variable de entorno
 `AUDIT_PASSWORD` en el panel de Render — es la única barrera de acceso, usa
-una password fuerte.
+una password fuerte. Opcionalmente, `SUPABASE_URL` y `SUPABASE_KEY` para la
+captura de leads (traen valores por defecto funcionales). Render redespliega
+automáticamente tras cada merge a `main`.
 
 > Aviso: el disco de Render es efímero — los informes en `reports/` se
 > pierden en cada deploy/reinicio. Descarga el PDF o el Markdown de cada
@@ -121,7 +164,7 @@ una password fuerte.
 
 | Score | Nivel | Significado |
 |-------|-------|-------------|
-| 0-49 | 🔴 Crítico | Invisible para motores de IA |
+| 0-49 | 🔴 Crítico | Señales técnicas para motores de IA muy incompletas |
 | 50-69 | 🟡 Mejorable | Presencia parcial |
 | 70-84 | 🟢 Bueno | Bien posicionado |
 | 85-100 | ⭐ Excelente | Referente en su sector |
@@ -132,7 +175,7 @@ una password fuerte.
 ## 🎯 RESUMEN EJECUTIVO
 *(Para el CEO/dueño del negocio)*
 
-**Puntuación global: 47/100 — 🔴 Crítico** (invisible para motores de IA)
+**Puntuación global: 47/100 — 🔴 Crítico** (señales técnicas para motores de IA muy incompletas)
 
 | Área | Puntuación | Estado |
 |------|-----------|--------|
@@ -141,22 +184,21 @@ una password fuerte.
 | AEO — Respuestas en IA | 4/13 | ❌ |
 | Presencia y Autoridad | 0/13 | ❌ |
 
-**En una frase:** Hoy, cuando alguien pregunta a ChatGPT o Perplexity por
-"clínica dental en Majadahonda", Clínica Dental Sonrisa es invisible: la web
-no da a los motores de IA la información que necesitan para recomendarla.
+**En una frase:** Clínica Dental Sonrisa tiene margen de mejora en las señales
+técnicas que los motores de IA usan para verificar y citar negocios locales.
 
 **Los 3 problemas más urgentes:**
-1. No hay preguntas frecuentes estructuradas: cuando un cliente pregunta a la
-   IA, la respuesta la dará la web de un competidor.
-2. La web no tiene llms.txt: los motores de IA no tienen ficha del negocio y
-   recomendarán a competidores que sí la tengan.
-3. El negocio no tiene coordenadas declaradas: pierde todas las búsquedas tipo
-   "cerca de mí", las de mayor intención de compra.
+1. No hay preguntas frecuentes estructuradas: los LLMs no tienen respuestas
+   del negocio que citar textualmente.
+2. La web no tiene llms.txt: los motores de IA no tienen una ficha estándar
+   del negocio que leer primero.
+3. El negocio no tiene coordenadas declaradas: compite en desventaja en las
+   búsquedas tipo "cerca de mí", las de mayor intención de compra.
 ```
 
 El informe completo incluye además: análisis técnico check a check (con
-*qué es / por qué importa / qué pierde el negocio / cómo corregirlo* en cada
-error), estado de acceso de cada bot de IA, la sección **Evidencia en Motores
+*qué es / por qué importa / tu competencia que sí lo tiene / cómo corregirlo*
+en cada error), estado de acceso de cada bot de IA, la sección **Evidencia en Motores
 de IA** con las queries exactas para que el cliente compruebe en ChatGPT /
 Grok / Perplexity que no aparece, el plan de acción priorizado con puntos
 ganados por acción y la tabla de implementación con precios de WhiteMoon.

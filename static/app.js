@@ -145,7 +145,8 @@
       url: $("f-url").value.trim(),
       nombre: $("f-nombre").value.trim(),
       sector: sectorSel.value === "otro" ? sectorOtro.value.trim() : sectorSel.value,
-      ciudad: $("f-ciudad").value.trim()
+      ciudad: $("f-ciudad").value.trim(),
+      html: $("f-html").value.trim()
     };
 
     startLoading();
@@ -218,6 +219,10 @@
     pill.style.background = hexToRgba(color, 0.1);
 
     $("frase").textContent = d.frase;
+
+    // Dos métricas: Score Técnico y Score Control IA
+    $("sc-tecnico").textContent = trimNum(d.tecnico) + "/" + trimNum(d.tecnico_max);
+    $("sc-control").textContent = trimNum(d.control) + "/" + trimNum(d.control_max);
 
     // Barras
     setBar("seo", d.seo, d.seo_max);

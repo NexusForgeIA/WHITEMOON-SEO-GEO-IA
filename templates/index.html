@@ -35,6 +35,13 @@
           <input type="url" id="f-url" placeholder="https://cliente.es" autocomplete="off" required>
           <div class="field-error" id="err-url"></div>
         </div>
+        <div class="full html-directo">
+          <details>
+            <summary>⚙️ Uso avanzado: pegar HTML manualmente (opcional)</summary>
+            <textarea id="f-html" rows="6" spellcheck="false"
+              placeholder="Pega aquí el HTML de la web si la URL da error 403.&#10;Obtenerlo: abre la web → Ctrl+U → Selecciona todo → Pega aquí."></textarea>
+          </details>
+        </div>
         <div>
           <label for="f-nombre">Nombre del cliente</label>
           <input type="text" id="f-nombre" placeholder="Clínica Dental Sonrisa" required>
@@ -82,6 +89,18 @@
       </div>
       <div>
         <p class="frase" id="frase"></p>
+        <div class="score-split">
+          <div class="split-chip tecnico">
+            <span class="split-label">🔧 Score Técnico</span>
+            <span class="split-val" id="sc-tecnico">—</span>
+            <span class="split-cap">SEO · Schema · Robots</span>
+          </div>
+          <div class="split-chip control">
+            <span class="split-label">🤖 Score Control IA</span>
+            <span class="split-val" id="sc-control">—</span>
+            <span class="split-cap">GEO · AEO · llms.txt</span>
+          </div>
+        </div>
         <div class="bars">
           <div class="bar-row">
             <span class="bar-label">SEO técnico</span>
