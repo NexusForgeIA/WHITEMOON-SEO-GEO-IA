@@ -17,7 +17,6 @@ import json
 import os
 import re
 import sys
-import time
 import unicodedata
 from datetime import date
 from pathlib import Path
@@ -689,27 +688,30 @@ def _fetch_sitemap_urls(site):
     return urls
 
 
-def _detect_gbp(nombre, ciudad):
-    """Best-effort: busca el panel de conocimiento de Google para el negocio.
-    → True (ficha detectada) | False (no detectada) | None (no verificable)."""
-    query = ("%s %s" % (nombre or "", ciudad or "")).strip()
-    if not query:
-        return None
-    try:
-        r = requests.get("https://www.google.com/search",
-                         params={"q": query, "hl": "es", "gl": "es"},
-                         headers=BROWSER_HEADERS, timeout=TIMEOUT_SHORT)
-    except requests.exceptions.RequestException:
-        return None
-    if r.status_code != 200:
-        return None
-    html = r.text.lower()
-    # Si Google muestra el muro de consentimiento o un captcha, no es verificable
-    if "consent.google" in html or "unusual traffic" in html or "/sorry/" in str(r.url).lower():
-        return None
-    markers = ("kp-wholepage", "knowledge-panel", "kno-rdesc", "kc:/local",
-               "/maps/place", "kp-header", "kno-ecr-pt")
-    return any(m in html for m in markers)
+def _lb_nap_complete(nodes):
+    """True si hay un LocalBusiness con name + telephone + dirección (addressLocality)."""
+    for lb in find_localbusiness(nodes):
+        addr = lb.get("address") or {}
+        if isinstance(addr, list):
+            addr = addr[0] if addr else {}
+        if (lb.get("name") and lb.get("telephone")
+                and isinstance(addr, dict) and addr.get("addressLocality")):
+            return True
+    return False
+
+
+def _has_aggregate_rating(nodes):
+    """True si algún nodo del schema declara aggregateRating o es AggregateRating."""
+    if find_nodes(nodes, "AggregateRating"):
+        return True
+    return any(isinstance(n, dict) and n.get("aggregateRating") for n in nodes)
+
+
+def _has_maps_link(site):
+    """True si el HTML enlaza a Google Maps (señal de ficha GBP real)."""
+    html = site["html"].decode("utf-8", errors="ignore").lower()
+    return any(m in html for m in ("maps.google.", "goo.gl/maps", "google.com/maps",
+                                   "/maps/place", "g.page", "maps.app.goo.gl"))
 
 
 def check_autoridad(a, site, ctx):
@@ -718,17 +720,21 @@ def check_autoridad(a, site, ctx):
     nodes = ctx.get("jsonld_nodes", [])
     links = _internal_links(soup, site["root"])
 
-    # 1) Google Business Profile (3 pts)
-    gbp = _detect_gbp(nombre, ciudad)
-    if gbp is True:
+    # 1) Google Business Profile (3 pts) — se infiere de señales en la propia web
+    #    (Google bloquea el scraping de su buscador, así que no lo usamos).
+    nap_complete = _lb_nap_complete(nodes)
+    maps_link = _has_maps_link(site)
+    rating = _has_aggregate_rating(nodes)
+    if maps_link or (nap_complete and rating):
         a.add("autoridad", "gbp", "Ficha de Google Business Profile activa", "ok", 3, 3,
-              'Panel de conocimiento detectado para "%s %s"' % (nombre, ciudad))
-    elif gbp is False:
-        a.add("autoridad", "gbp", "Ficha de Google Business Profile activa", "error", 0, 3,
-              "No se detecta ficha GBP — crear/optimizar el perfil en google.com/business")
+              "Señales de GBP detectadas (%s) — verifica que tu ficha esté optimizada"
+              % ("enlace a Google Maps" if maps_link else "reseñas + NAP en schema"))
+    elif nap_complete:
+        a.add("autoridad", "gbp", "Ficha de Google Business Profile activa", "warn", 2, 3,
+              "LocalBusiness completo detectado — verifica que tu ficha GBP esté activa y optimizada")
     else:
-        a.add("autoridad", "gbp", "Ficha de Google Business Profile activa", "warn", 0, 3,
-              "No verificable automáticamente (Google limitó la consulta) — revisar manualmente")
+        a.add("autoridad", "gbp", "Ficha de Google Business Profile activa", "error", 0, 3,
+              "Sin LocalBusiness ni NAP en la web — crea/optimiza tu ficha en google.com/business")
 
     # 2) Página "Quiénes somos" / "Sobre nosotros" (3 pts) — señal E-E-A-T básica
     about_texts = tuple(_norm(t) for t in ABOUT_TEXTS)
@@ -884,10 +890,13 @@ def check_pagespeed(a, site, ctx):
 # BLOQUE 4.7 — CRO / CONVERSIÓN (8 pts)
 # ──────────────────────────────────────────────────────────────────────────────
 
-PHONE_RE = re.compile(r"(?:\+34[\s.\-]?)?[6-9]\d{2}[\s.\-]?\d{2}[\s.\-]?\d{2}[\s.\-]?\d{2}")
-CTA_WORDS = ("contact", "llama", "llamanos", "pide", "reserva", "solicita", "presupuesto",
-             "compra", "empieza", "prueba gratis", "descarga", "pide cita", "reservar",
-             "consulta", "escribenos", "mas informacion", "comprar", "apuntate")
+# Teléfono español: 9 dígitos empezando por 6-9, con separadores opcionales
+# (detecta "643199580", "643 199 580", "+34 643 199 580", "643-19-95-80", …)
+PHONE_RE = re.compile(r"(?<!\d)(?:\+?34[\s.\-]?)?[6-9](?:[ .\-]?\d){8}(?!\d)")
+CTA_WORDS = ("habla", "llama", "llamanos", "contacta", "contact", "prueba", "solicita",
+             "empieza", "comenzar", "comienza", "pide", "pide cita", "reserva", "reservar",
+             "presupuesto", "compra", "comprar", "descarga", "consulta", "escribenos",
+             "mas informacion", "apuntate", "agenda")
 
 
 def check_cro(a, site, ctx):
@@ -901,12 +910,24 @@ def check_cro(a, site, ctx):
         text = body.get_text(" ", strip=True) if body else soup.get_text(" ", strip=True)
         phone = bool(soup.select_one('a[href^="tel:"]')) or bool(PHONE_RE.search(text))
 
-        form = bool(soup.find("form"))
+        # Formulario: <form> o contenedores típicos de contacto (chatbots/widgets
+        # de voz a veces no usan <form>, pero sí ids/clases "contact"/"form").
+        form = bool(soup.find("form")) or bool(
+            soup.select_one('[id*="contact" i], [class*="contact" i], [class*="form" i]'))
 
-        hero = body.decode_contents()[:1000].lower() if body else ""
-        has_btn = any(m in hero for m in ("<button", 'role="button"', 'type="submit"', "btn", "cta"))
-        has_cta_text = any(w in _norm(hero) for w in CTA_WORDS)
-        cta = ("<a " in hero or "<button" in hero) and (has_btn or has_cta_text)
+        # CTA en el hero (primeros 3000 chars): botones, enlaces .btn/.cta o
+        # cualquier elemento con texto de acción (incluye widgets de chat/voz).
+        hero = body.decode_contents()[:3000].lower() if body else ""
+        hero_norm = _norm(hero)
+        cta = (
+            "<button" in hero
+            or 'type="submit"' in hero or "type='submit'" in hero
+            or 'role="button"' in hero or "role='button'" in hero
+            or 'class="btn' in hero or "class='btn" in hero
+            or 'class="cta' in hero or "class='cta" in hero
+            or "btn-" in hero or " btn " in hero or "cta-" in hero
+            or any(w in hero_norm for w in CTA_WORDS)
+        )
     except Exception:
         pass  # ante cualquier error de parseo, se puntúa lo detectado hasta el momento
 
@@ -926,12 +947,6 @@ def check_cro(a, site, ctx):
 # ──────────────────────────────────────────────────────────────────────────────
 # BLOQUE 4.8 — DIRECTORIOS LOCALES (4 pts) + COMPETENCIA y CONTENIDO (informativos)
 # ──────────────────────────────────────────────────────────────────────────────
-
-DIRECTORY_DOMAINS = ("paginasamarillas", "yelp.", "tripadvisor", "idealista", "fotocasa",
-                     "doctoralia", "booking.com", "eltenedor", "thefork", "cylex", "infoisinfo",
-                     "treatwell", "facebook.", "instagram.", "linkedin.", "youtube.",
-                     "twitter.", "x.com", "google.", "wikipedia.", "amazon.", "tuugo", "11870")
-
 
 def _google_search_html(query, num=10, timeout=TIMEOUT_SHORT):
     """HTML de una búsqueda en Google (best-effort). None si falla o bloquea."""
@@ -1014,66 +1029,23 @@ def check_directorios(a, ctx):
                   "No verificable (Google limitó la consulta)")
 
 
-def _quick_site_checks(url):
-    """Checks básicos de un competidor (best-effort). None si no responde."""
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT_SHORT, allow_redirects=True)
-    except requests.exceptions.RequestException:
-        return None
-    if r.status_code >= 400:
-        return None
-    root = "{0}://{1}".format(urlparse(r.url).scheme, urlparse(r.url).netloc)
-    soup = BeautifulSoup(r.content, "html.parser")
-    title_tag = soup.find("title")
-    title_txt = title_tag.get_text(strip=True) if title_tag else ""
-    nodes, _, _ = collect_jsonld(soup)
-    return {
-        "host": urlparse(r.url).netloc.lower().replace("www.", ""),
-        "title_ok": bool(title_txt) and len(title_txt) <= 65,
-        "lb": bool(find_localbusiness(nodes)),
-        "faq": bool(find_nodes(nodes, "FAQPage")),
-        "llms": bool((_fetch_optional(root + "/llms.txt", timeout=TIMEOUT_SHORT) or "").strip()),
-        "robots": _fetch_optional(root + "/robots.txt", timeout=TIMEOUT_SHORT) is not None,
-    }
-
-
-COMP_TIME_BUDGET = 25  # segundos máx. para analizar competidores
-COMP_MAX = 2           # nº máx. de competidores analizados (límite de memoria/tiempo)
-
-
 def check_competidores(audit, site, ctx):
-    """Hasta 2 competidores orgánicos para '{sector} {ciudad}' + checks básicos.
-    Informativo y best-effort: cualquier fallo deja la lista vacía sin romper nada."""
-    sector, ciudad, url_cliente = ctx["sector"], ctx["ciudad"], ctx["url"]
-    client_host = urlparse(url_cliente).netloc.lower().replace("www.", "")
-    competidores = []
-    try:
-        html = _google_search_html("%s %s" % (sector, ciudad))
-        if html:
-            low = html.lower()
-            if not any(s in low for s in ("/sorry/", "consent.google", "unusual traffic")):
-                exclude = DIRECTORY_DOMAINS + (client_host,)
-                start = time.monotonic()
-                for u in _extract_organic_urls(html, exclude=exclude, limit=8):
-                    if len(competidores) >= COMP_MAX or time.monotonic() - start > COMP_TIME_BUDGET:
-                        break
-                    checks = _quick_site_checks(u)
-                    gc.collect()  # libera el HTML/sopa del competidor tras cada request
-                    if checks and checks["host"] != client_host:
-                        competidores.append(checks)
-    except Exception:
-        competidores = []
-    ctx["competidores"] = competidores
+    """Análisis de competencia SIN scraping de Google (lo bloquea y consume RAM).
+    Prepara el link de búsqueda manual y los datos del propio cliente para que el
+    auditor rellene la tabla comparativa a mano."""
+    sector, ciudad = ctx["sector"], ctx["ciudad"]
+    query = ("%s %s" % (sector, ciudad)).strip()
+    ctx["competencia_query"] = query
+    ctx["competencia_url"] = "https://www.google.com/search?q=" + quote_plus(query)
 
     nodes = ctx.get("jsonld_nodes", [])
     t = next((c for c in audit.checks if c["id"] == "title_len"), None)
     ctx["cliente_checks"] = {
-        "host": client_host,
+        "host": urlparse(ctx["url"]).netloc.lower().replace("www.", ""),
         "title_ok": bool(t and t["status"] == "ok"),
         "lb": bool(find_localbusiness(nodes)),
         "faq": ctx.get("faq_schema", False),
         "llms": ctx.get("llms_ok", False),
-        "robots": site["robots"] is not None,
     }
 
 
@@ -1899,35 +1871,34 @@ def render_report(audit, site, ctx):
     w("---")
     w("")
 
-    # ── Análisis de competencia ──
-    comp = ctx.get("competidores")
+    # ── Análisis de competencia (manual, sin scraping) ──
     cli = ctx.get("cliente_checks")
-    if comp or cli:
-        w("## 🥊 ANÁLISIS DE COMPETENCIA")
-        w("*(Top resultados orgánicos para \"%s en %s\" — informativo)*" % (sector, ciudad))
+    comp_url = ctx.get("competencia_url")
+    w("## 🥊 ANÁLISIS DE COMPETENCIA")
+    w("*(Comparativa manual — Google bloquea el análisis automático)*")
+    w("")
+    if comp_url:
+        w("🔍 **Busca manualmente tus competidores:** [abrir búsqueda en Google](%s)" % comp_url)
         w("")
-        if comp:
-            def _si(b):
-                return "✅" if b else "❌"
-            w("| Web | Title ≤65 | LocalBusiness | FAQPage | llms.txt | robots.txt |")
-            w("|-----|:---------:|:-------------:|:-------:|:--------:|:----------:|")
-            if cli:
-                w("| **%s (tú)** | %s | %s | %s | %s | %s |" % (
-                    cli["host"], _si(cli["title_ok"]), _si(cli["lb"]), _si(cli["faq"]),
-                    _si(cli["llms"]), _si(cli["robots"])))
-            for c in comp:
-                w("| %s | %s | %s | %s | %s | %s |" % (
-                    c["host"], _si(c["title_ok"]), _si(c["lb"]), _si(c["faq"]),
-                    _si(c["llms"]), _si(c["robots"])))
-            w("")
-            w("> Compárate con quien ya aparece arriba: las columnas en ❌ de tu fila son")
-            w("> exactamente las ventajas que hoy te llevan tus competidores.")
-        else:
-            w("No se pudieron extraer competidores automáticamente (Google limitó la consulta).")
-            w("Repite la búsqueda manualmente: \"%s en %s\" y compara las 5 primeras webs." % (sector, ciudad))
+        w("Abre el enlace, anota las 3-5 primeras webs (sin anuncios ni directorios) y")
+        w("rellena la tabla con lo que veas en cada una:")
         w("")
-        w("---")
-        w("")
+
+    def _si(b):
+        return "✅" if b else "❌"
+    w("| Competidor | Title ≤65 | LocalBusiness | FAQPage | llms.txt |")
+    w("|------------|:---------:|:-------------:|:-------:|:--------:|")
+    if cli:
+        w("| **%s (tú)** | %s | %s | %s | %s |" % (
+            cli["host"], _si(cli["title_ok"]), _si(cli["lb"]), _si(cli["faq"]), _si(cli["llms"])))
+    for _ in range(4):
+        w("|  |  |  |  |  |")
+    w("")
+    w("> Las columnas donde tus competidores tengan ✅ y tú ❌ son las ventajas")
+    w("> que hoy te están quitando. Empieza por ahí.")
+    w("")
+    w("---")
+    w("")
 
     # ── Qué mejora con esta auditoría ──
     queries = ['- "%s en %s"' % (sector, ciudad),
