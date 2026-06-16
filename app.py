@@ -148,6 +148,9 @@ def audit():
     try:
         result = run_audit_full(url, nombre, sector, ciudad, out_dir=str(REPORTS_DIR),
                                 html_manual=html_manual)
+        # El render del markdown también va dentro del try: si fallara, debe
+        # devolverse un JSON de error y nunca una página HTML 500 de Flask.
+        informe_html = render_markdown(result["report_md"])
     except AuditError as e:
         return jsonify(ok=False, error=str(e)), 502
     except Exception as e:
@@ -172,7 +175,7 @@ def audit():
         errores_criticos=result["errores"],
         warnings=result["warnings"],
         informe_md=result["report_md"],
-        informe_html=render_markdown(result["report_md"]),
+        informe_html=informe_html,
         filename=result["filename"],
         url=result["url"],
     )

@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import time
 import unicodedata
 from datetime import date
 from pathlib import Path
@@ -659,7 +660,10 @@ def _internal_links(soup, root):
 
 
 def _fetch_sitemap_urls(site):
-    """Recupera <loc> del sitemap (declarado en robots.txt o /sitemap.xml). Best-effort."""
+    """Recupera <loc> del sitemap (declarado en robots.txt o /sitemap.xml).
+    Best-effort y memoizado en `site` (se consulta desde autoridad y contenido)."""
+    if "_sitemap_urls" in site:
+        return site["_sitemap_urls"]
     sitemaps = [l.split(":", 1)[1].strip()
                 for l in (site["robots"] or "").splitlines()
                 if l.strip().lower().startswith("sitemap:")]
@@ -672,7 +676,7 @@ def _fetch_sitemap_urls(site):
             continue
         seen.add(sm)
         try:
-            r = requests.get(sm, headers=HEADERS, timeout=TIMEOUT)
+            r = requests.get(sm, headers=HEADERS, timeout=TIMEOUT_SHORT)
         except requests.exceptions.RequestException:
             continue
         if r.status_code != 200:
@@ -682,6 +686,7 @@ def _fetch_sitemap_urls(site):
             queue.extend(locs[:10])
         else:
             urls.extend(locs)
+    site["_sitemap_urls"] = urls
     return urls
 
 
@@ -694,7 +699,7 @@ def _detect_gbp(nombre, ciudad):
     try:
         r = requests.get("https://www.google.com/search",
                          params={"q": query, "hl": "es", "gl": "es"},
-                         headers=HEADERS, timeout=TIMEOUT)
+                         headers=BROWSER_HEADERS, timeout=TIMEOUT_SHORT)
     except requests.exceptions.RequestException:
         return None
     if r.status_code != 200:
@@ -842,31 +847,38 @@ def check_pagespeed(a, site, ctx):
         a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "error", 0, 8,
               "Score móvil %d/100 (lento para los estándares de Google)" % score)
 
-    # Core Web Vitals (informativos): datos de campo (CrUX) y fallback a laboratorio
-    audits = lh.get("audits", {}) or {}
-    crux = ((data.get("loadingExperience", {}) or {}).get("metrics", {})) or {}
+    # Core Web Vitals (informativos): datos de campo (CrUX) y fallback a laboratorio.
+    # Cualquier diferencia en la forma de la respuesta no debe romper la auditoría.
+    try:
+        audits = lh.get("audits", {}) or {}
+        crux = ((data.get("loadingExperience", {}) or {}).get("metrics", {})) or {}
 
-    def lab(key):
-        return (audits.get(key, {}) or {}).get("numericValue")
+        def lab(key):
+            return (audits.get(key, {}) or {}).get("numericValue")
 
-    lcp = None
-    if "LARGEST_CONTENTFUL_PAINT_MS" in crux:
-        lcp = crux["LARGEST_CONTENTFUL_PAINT_MS"]["percentile"] / 1000.0
-    elif lab("largest-contentful-paint") is not None:
-        lcp = lab("largest-contentful-paint") / 1000.0
-    _ps_vital(a, "pagespeed_lcp", "LCP — Largest Contentful Paint", lcp, 2.5, 4.0, "%.1f s")
+        def crux_pct(key):
+            v = crux.get(key)
+            return v.get("percentile") if isinstance(v, dict) else None
 
-    cls = None
-    if "CUMULATIVE_LAYOUT_SHIFT_SCORE" in crux:
-        cls = crux["CUMULATIVE_LAYOUT_SHIFT_SCORE"]["percentile"] / 100.0
-    elif lab("cumulative-layout-shift") is not None:
-        cls = lab("cumulative-layout-shift")
-    _ps_vital(a, "pagespeed_cls", "CLS — Cumulative Layout Shift", cls, 0.1, 0.25, "%.2f")
+        lcp = None
+        if crux_pct("LARGEST_CONTENTFUL_PAINT_MS") is not None:
+            lcp = crux_pct("LARGEST_CONTENTFUL_PAINT_MS") / 1000.0
+        elif lab("largest-contentful-paint") is not None:
+            lcp = lab("largest-contentful-paint") / 1000.0
+        _ps_vital(a, "pagespeed_lcp", "LCP — Largest Contentful Paint", lcp, 2.5, 4.0, "%.1f s")
 
-    inp = None
-    if "INTERACTION_TO_NEXT_PAINT" in crux:
-        inp = crux["INTERACTION_TO_NEXT_PAINT"]["percentile"]
-    _ps_vital(a, "pagespeed_inp", "INP — Interaction to Next Paint", inp, 200, 500, "%d ms")
+        cls = None
+        if crux_pct("CUMULATIVE_LAYOUT_SHIFT_SCORE") is not None:
+            cls = crux_pct("CUMULATIVE_LAYOUT_SHIFT_SCORE") / 100.0
+        elif lab("cumulative-layout-shift") is not None:
+            cls = lab("cumulative-layout-shift")
+        _ps_vital(a, "pagespeed_cls", "CLS — Cumulative Layout Shift", cls, 0.1, 0.25, "%.2f")
+
+        inp = crux_pct("INTERACTION_TO_NEXT_PAINT")
+        _ps_vital(a, "pagespeed_inp", "INP — Interaction to Next Paint",
+                  float(inp) if inp is not None else None, 200, 500, "%.0f ms")
+    except Exception:
+        pass  # los Core Web Vitals son informativos; nunca deben romper la auditoría
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -881,29 +893,32 @@ CTA_WORDS = ("contact", "llama", "llamanos", "pide", "reserva", "solicita", "pre
 
 def check_cro(a, site, ctx):
     soup = site["soup"]
-    html = site["html"].decode("utf-8", errors="ignore")
-    low = html.lower()
+    wa = phone = form = cta = False
+    try:
+        low = site["html"].decode("utf-8", errors="ignore").lower()
+        wa = "wa.me" in low or "whatsapp.com" in low or "api.whatsapp" in low
 
-    wa = "wa.me" in low or "whatsapp.com" in low or "api.whatsapp" in low
+        body = soup.body
+        text = body.get_text(" ", strip=True) if body else soup.get_text(" ", strip=True)
+        phone = bool(soup.select_one('a[href^="tel:"]')) or bool(PHONE_RE.search(text))
+
+        form = bool(soup.find("form"))
+
+        hero = body.decode_contents()[:1000].lower() if body else ""
+        has_btn = any(m in hero for m in ("<button", 'role="button"', 'type="submit"', "btn", "cta"))
+        has_cta_text = any(w in _norm(hero) for w in CTA_WORDS)
+        cta = ("<a " in hero or "<button" in hero) and (has_btn or has_cta_text)
+    except Exception:
+        pass  # ante cualquier error de parseo, se puntúa lo detectado hasta el momento
+
     a.add("cro", "cro_whatsapp", "WhatsApp visible", "ok" if wa else "warn",
           2 if wa else 0, 2,
           "Enlace a WhatsApp detectado" if wa else "Sin enlace a WhatsApp — canal directo muy usado en España")
-
-    body = soup.body
-    text = body.get_text(" ", strip=True) if body else soup.get_text(" ", strip=True)
-    phone = bool(soup.select_one('a[href^="tel:"]')) or bool(PHONE_RE.search(text))
     a.add("cro", "cro_phone", "Teléfono visible", "ok" if phone else "warn",
           2 if phone else 0, 2,
           "Teléfono detectado en la página" if phone else "Sin teléfono visible")
-
-    form = bool(soup.find("form"))
     a.add("cro", "cro_form", "Formulario de contacto", "ok" if form else "warn",
           2 if form else 0, 2, "<form> detectado" if form else "Sin formulario de contacto")
-
-    hero = body.decode_contents()[:1000].lower() if body else ""
-    has_btn = any(m in hero for m in ("<button", 'role="button"', 'type="submit"', "btn", "cta"))
-    has_cta_text = any(w in _norm(hero) for w in CTA_WORDS)
-    cta = ("<a " in hero or "<button" in hero) and (has_btn or has_cta_text)
     a.add("cro", "cro_cta", "CTA visible en el hero", "ok" if cta else "warn",
           2 if cta else 0, 2,
           "Llamada a la acción detectada arriba" if cta else "Sin CTA clara en la parte superior")
@@ -971,13 +986,22 @@ def _directory_presence(nombre, dom):
     return bool(re.search(r'https?://[^"\'>]*%s' % re.escape(dom), low))
 
 
+DIR_TIME_BUDGET = 25  # segundos máx. para todas las consultas de directorios
+
+
 def check_directorios(a, ctx):
     nombre, sector = ctx["nombre"], ctx["sector"]
     skey = sector_key(sector)
     dirs = (DIRECTORIOS_BASE + DIRECTORIOS_SECTOR.get(skey, DIRECTORIOS_DEFAULT))[:4]
     ctx["directorios"] = {}
+    start = time.monotonic()
     for dom in dirs:
-        present = _directory_presence(nombre, dom)
+        present = None
+        if time.monotonic() - start < DIR_TIME_BUDGET:
+            try:
+                present = _directory_presence(nombre, dom)
+            except Exception:
+                present = None
         ctx["directorios"][dom] = present
         if present is True:
             a.add("directorios", "dir_" + dom, "Presencia en %s" % dom, "ok", 1, 1, "Ficha detectada")
@@ -1012,22 +1036,30 @@ def _quick_site_checks(url):
     }
 
 
+COMP_TIME_BUDGET = 35  # segundos máx. para analizar competidores
+
+
 def check_competidores(audit, site, ctx):
-    """Top 5 competidores orgánicos para '{sector} {ciudad}' + checks básicos."""
+    """Top 5 competidores orgánicos para '{sector} {ciudad}' + checks básicos.
+    Informativo y best-effort: cualquier fallo deja la lista vacía sin romper nada."""
     sector, ciudad, url_cliente = ctx["sector"], ctx["ciudad"], ctx["url"]
     client_host = urlparse(url_cliente).netloc.lower().replace("www.", "")
     competidores = []
-    html = _google_search_html("%s %s" % (sector, ciudad))
-    if html:
-        low = html.lower()
-        if not any(s in low for s in ("/sorry/", "consent.google", "unusual traffic")):
-            exclude = DIRECTORY_DOMAINS + (client_host,)
-            for u in _extract_organic_urls(html, exclude=exclude, limit=12):
-                if len(competidores) >= 5:
-                    break
-                checks = _quick_site_checks(u)
-                if checks and checks["host"] != client_host:
-                    competidores.append(checks)
+    try:
+        html = _google_search_html("%s %s" % (sector, ciudad))
+        if html:
+            low = html.lower()
+            if not any(s in low for s in ("/sorry/", "consent.google", "unusual traffic")):
+                exclude = DIRECTORY_DOMAINS + (client_host,)
+                start = time.monotonic()
+                for u in _extract_organic_urls(html, exclude=exclude, limit=12):
+                    if len(competidores) >= 5 or time.monotonic() - start > COMP_TIME_BUDGET:
+                        break
+                    checks = _quick_site_checks(u)
+                    if checks and checks["host"] != client_host:
+                        competidores.append(checks)
+    except Exception:
+        competidores = []
     ctx["competidores"] = competidores
 
     nodes = ctx.get("jsonld_nodes", [])
@@ -1044,14 +1076,17 @@ def check_competidores(audit, site, ctx):
 
 def check_contenido(site, ctx):
     """Inventario de contenido: páginas en sitemap y artículos de blog."""
-    urls = set(_fetch_sitemap_urls(site))
-    blog_pat = ("/blog/", "/noticias/", "/articulos/", "/articulo/", "/post/", "/posts/")
-    blog_urls = [u for u in urls if any(p in u.lower() for p in blog_pat)]
-    ctx["contenido"] = {
-        "total": len(urls),
-        "has_blog": len(blog_urls) > 0,
-        "blog_count": len(blog_urls),
-    }
+    try:
+        urls = set(_fetch_sitemap_urls(site))
+        blog_pat = ("/blog/", "/noticias/", "/articulos/", "/articulo/", "/post/", "/posts/")
+        blog_urls = [u for u in urls if any(p in u.lower() for p in blog_pat)]
+        ctx["contenido"] = {
+            "total": len(urls),
+            "has_blog": len(blog_urls) > 0,
+            "blog_count": len(blog_urls),
+        }
+    except Exception:
+        ctx["contenido"] = {"total": 0, "has_blog": False, "blog_count": 0}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
