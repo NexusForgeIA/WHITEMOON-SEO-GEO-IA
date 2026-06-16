@@ -313,6 +313,8 @@ select option { background: var(--bg2); color: var(--text); }
 .bar-fill.geo { background: linear-gradient(90deg, var(--g), #4de8c8); }
 .bar-fill.aeo { background: linear-gradient(90deg, var(--gold), #ffe08a); }
 .bar-fill.autoridad { background: linear-gradient(90deg, #8b5cf6, #c4b5fd); }
+.bar-fill.cro { background: linear-gradient(90deg, #ff7a59, #ffb199); }
+.bar-fill.directorios { background: linear-gradient(90deg, #2dd4bf, #99f6e4); }
 .bar-pts { font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 
 .result-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 26px; }

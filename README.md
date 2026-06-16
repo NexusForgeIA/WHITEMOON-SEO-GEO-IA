@@ -11,16 +11,22 @@ para entregar al cliente.
 
 | Bloque | Puntos | Qué mide |
 |--------|--------|----------|
-| **SEO técnico** | 63 | Meta tags (12), estructura HTML (16, scripts defer/async = 6), Schema JSON-LD (27, LocalBusiness completo = 10, FAQPage = 10), robots/acceso bots IA + llms.txt recomendado (8) |
-| **GEO** — visibilidad local IA | 11 | geo.region + geo.placename + ICBM juntos (4, señales de bajo impacto), dirección estructurada (4), GeoCoordinates (3) |
+| **SEO técnico** | 51 | Meta tags (12), estructura HTML (8), Schema JSON-LD (18, LocalBusiness 6 + FAQPage 6), robots/bots IA + llms.txt (5) y **rendimiento PageSpeed (8)** |
+| **GEO** — visibilidad local IA | 11 | geo.region + geo.placename + ICBM juntos (4), dirección estructurada (4), GeoCoordinates (3) |
 | **AEO** — respuestas en IA | 13 | FAQPage schema, FAQ visible en el DOM, nº de preguntas, HowTo |
-| **Presencia y Autoridad** (E-E-A-T) | 13 | Google Business Profile (3), página "Quiénes somos" (3), casos/testimonios (3), arquitectura SEO local (4) |
+| **Presencia y Autoridad** (E-E-A-T) | 13 | Google Business Profile (3), "Quiénes somos" (3), casos/testimonios (3), arquitectura SEO local (4) |
+| **Conversión (CRO)** | 8 | WhatsApp (2), teléfono (2), formulario (2), CTA en el hero (2) |
+| **Directorios locales** | 4 | Presencia en directorios relevantes del sector (1 pt c/u, máx 4) |
 | **TOTAL** | **100** | |
 
-> Nota: el bloque de robots y acceso para bots IA (GPTBot, ClaudeBot,
-> PerplexityBot, Google-Extended) y el llms.txt puntúan dentro del SEO técnico.
-> El llms.txt es **recomendado** (no crítico): si los bots no están bloqueados,
-> acceden igualmente.
+> Notas:
+> - **PageSpeed** usa la API gratuita de Google PageSpeed Insights. Requiere la
+>   variable de entorno `PAGESPEED_API_KEY` (gratis en Google Cloud Console); si
+>   no está configurada, el check sale como ⚠️ "No configurada".
+> - El **análisis de competencia** y el **inventario de contenido** son
+>   informativos (no puntúan) y se basan en búsquedas best-effort en Google.
+> - El llms.txt es **recomendado** (no crítico): si los bots no están bloqueados,
+>   acceden igualmente.
 
 ## Instalación
 
@@ -175,14 +181,16 @@ automáticamente tras cada merge a `main`.
 ## 🎯 RESUMEN EJECUTIVO
 *(Para el CEO/dueño del negocio)*
 
-**Puntuación global: 47/100 — 🔴 Crítico** (señales técnicas para motores de IA muy incompletas)
+**Puntuación global: 38/100 — 🔴 Crítico** (señales técnicas para motores de IA muy incompletas)
 
-| Área | Puntuación | Estado |
-|------|-----------|--------|
-| SEO técnico | 41/63 | ⚠️ |
-| GEO — Visibilidad local IA | 4/11 | ❌ |
-| AEO — Respuestas en IA | 4/13 | ❌ |
-| Presencia y Autoridad | 0/13 | ❌ |
+**Puntuación por área:**
+
+- 🔧 SEO Técnico: **29/51** ⚠️
+- 🌍 GEO Local IA: **4/11** ❌
+- 💬 AEO Respuestas: **0/13** ❌
+- 🏆 Autoridad: **3/13** ❌
+- 🎯 Conversión (CRO): **6/8** 🟢
+- 🗂️ Directorios locales: **0/4** ❌
 
 **En una frase:** Clínica Dental Sonrisa tiene margen de mejora en las señales
 técnicas que los motores de IA usan para verificar y citar negocios locales.

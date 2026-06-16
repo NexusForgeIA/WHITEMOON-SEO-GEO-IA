@@ -15,6 +15,7 @@ Genera: reports/audit-{dominio}-{fecha}.md
 import base64
 import io
 import json
+import os
 import re
 import sys
 import unicodedata
@@ -31,9 +32,36 @@ except ImportError:
 
 USER_AGENT = "Mozilla/5.0 (compatible; WhiteMoon-Audit/1.0)"
 HEADERS = {"User-Agent": USER_AGENT, "Accept-Language": "es-ES,es;q=0.9"}
+# Headers de navegador real para búsquedas en Google (best-effort; Google
+# suele mostrar muro de consentimiento o captcha a peticiones automatizadas).
+BROWSER_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+    "Accept-Language": "es-ES,es;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
 TIMEOUT = 25
+TIMEOUT_SHORT = 10  # peticiones a terceros (competidores, directorios): no bloquear la auditoría
+
+# API gratuita de PageSpeed Insights (obtener key en Google Cloud Console)
+PAGESPEED_API_KEY = os.environ.get("PAGESPEED_API_KEY", "").strip()
+PAGESPEED_ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 
 AI_BOTS = ["GPTBot", "ClaudeBot", "PerplexityBot", "Google-Extended"]
+
+# Directorios locales por sector (siempre 4 → área "directorios" vale 4 pts fijos)
+DIRECTORIOS_BASE = ["paginasamarillas.es", "yelp.es"]
+DIRECTORIOS_SECTOR = {
+    "hosteleria": ["tripadvisor.es", "eltenedor.es"],
+    "hotel": ["tripadvisor.es", "booking.com"],
+    "inmobiliaria": ["idealista.com", "fotocasa.es"],
+    "dental": ["doctoralia.es", "cylex.es"],
+    "podologia": ["doctoralia.es", "cylex.es"],
+    "estetica": ["treatwell.es", "cylex.es"],
+    "abogados": ["cylex.es", "infoisinfo.es"],
+    "gestoria": ["cylex.es", "infoisinfo.es"],
+}
+DIRECTORIOS_DEFAULT = ["cylex.es", "infoisinfo.es"]
 
 LOCALBUSINESS_HINTS = (
     "localbusiness", "dentist", "restaurant", "store", "medicalbusiness",
@@ -109,9 +137,9 @@ def fetch_site(url, html_manual=None):
             "robots": robots_txt, "llms": llms_txt}
 
 
-def _fetch_optional(url):
+def _fetch_optional(url, timeout=TIMEOUT):
     try:
-        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        r = requests.get(url, headers=HEADERS, timeout=timeout)
         if r.status_code == 200 and "<html" not in r.text[:500].lower():
             return r.text
     except requests.exceptions.RequestException:
@@ -366,11 +394,11 @@ def check_structure(a, site):
 
     h1s = soup.find_all("h1")
     if len(h1s) == 1:
-        a.add("estructura", "h1", "H1 único", "ok", 3, 3, '"%s"' % h1s[0].get_text(strip=True)[:80])
+        a.add("estructura", "h1", "H1 único", "ok", 2, 2, '"%s"' % h1s[0].get_text(strip=True)[:80])
     elif len(h1s) == 0:
-        a.add("estructura", "h1", "H1 único", "error", 0, 3, "No hay ningún H1")
+        a.add("estructura", "h1", "H1 único", "error", 0, 2, "No hay ningún H1")
     else:
-        a.add("estructura", "h1", "H1 único", "warn", 1, 3, "Hay %d H1 (debe haber exactamente 1)" % len(h1s))
+        a.add("estructura", "h1", "H1 único", "warn", 0.5, 2, "Hay %d H1 (debe haber exactamente 1)" % len(h1s))
 
     headings = [(int(t.name[1]), t.get_text(strip=True)[:60])
                 for t in soup.find_all(re.compile("^h[1-6]$"))]
@@ -381,45 +409,45 @@ def check_structure(a, site):
             jumps.append("H%d → H%d (\"%s\")" % (prev, level, text))
         prev = level
     if headings and not jumps:
-        a.add("estructura", "hierarchy", "Jerarquía de encabezados H1→H2→H3", "ok", 3, 3,
+        a.add("estructura", "hierarchy", "Jerarquía de encabezados H1→H2→H3", "ok", 2, 2,
               "%d encabezados, sin saltos de nivel" % len(headings))
     elif headings:
-        a.add("estructura", "hierarchy", "Jerarquía de encabezados H1→H2→H3", "warn", 1, 3,
+        a.add("estructura", "hierarchy", "Jerarquía de encabezados H1→H2→H3", "warn", 0.5, 2,
               "Saltos detectados: " + "; ".join(jumps[:3]))
     else:
-        a.add("estructura", "hierarchy", "Jerarquía de encabezados H1→H2→H3", "error", 0, 3,
+        a.add("estructura", "hierarchy", "Jerarquía de encabezados H1→H2→H3", "error", 0, 2,
               "No hay encabezados")
 
     imgs = [i for i in soup.find_all("img") if not (i.get("aria-hidden") == "true")]
     if imgs:
         with_alt = [i for i in imgs if (i.get("alt") or "").strip()]
         ratio = len(with_alt) / len(imgs)
-        pts = 3 if ratio == 1 else (1.5 if ratio >= 0.8 else 0)
+        pts = 1.5 if ratio == 1 else (0.75 if ratio >= 0.8 else 0)
         status = "ok" if ratio == 1 else ("warn" if ratio >= 0.8 else "error")
-        a.add("estructura", "img_alt", "Imágenes con atributo alt", status, pts, 3,
+        a.add("estructura", "img_alt", "Imágenes con atributo alt", status, pts, 1.5,
               "%d de %d imágenes con alt" % (len(with_alt), len(imgs)))
         with_dims = [i for i in imgs if i.get("width") and i.get("height")]
         ratio_d = len(with_dims) / len(imgs)
-        pts_d = 1 if ratio_d == 1 else (0.5 if ratio_d >= 0.8 else 0)
+        pts_d = 0.5 if ratio_d == 1 else (0.25 if ratio_d >= 0.8 else 0)
         a.add("estructura", "img_dims", "Imágenes con width y height",
-              "ok" if ratio_d == 1 else ("warn" if ratio_d >= 0.8 else "error"), pts_d, 1,
+              "ok" if ratio_d == 1 else ("warn" if ratio_d >= 0.8 else "error"), pts_d, 0.5,
               "%d de %d imágenes con dimensiones (evita CLS)" % (len(with_dims), len(imgs)))
     else:
-        a.add("estructura", "img_alt", "Imágenes con atributo alt", "info", 3, 3, "Sin imágenes <img>")
-        a.add("estructura", "img_dims", "Imágenes con width y height", "info", 1, 1, "Sin imágenes <img>")
+        a.add("estructura", "img_alt", "Imágenes con atributo alt", "info", 1.5, 1.5, "Sin imágenes <img>")
+        a.add("estructura", "img_dims", "Imágenes con width y height", "info", 0.5, 0.5, "Sin imágenes <img>")
 
     ext_scripts = [s for s in soup.find_all("script", src=True)]
     if ext_scripts:
         deferred = [s for s in ext_scripts
                     if s.has_attr("defer") or s.has_attr("async") or s.get("type") == "module"]
         ratio_s = len(deferred) / len(ext_scripts)
-        pts_s = 6 if ratio_s == 1 else (3 if ratio_s >= 0.5 else 0)
+        pts_s = 2 if ratio_s == 1 else (1 if ratio_s >= 0.5 else 0)
         a.add("estructura", "scripts", "Scripts externos con defer/async",
-              "ok" if ratio_s == 1 else ("warn" if ratio_s >= 0.5 else "error"), pts_s, 6,
-              "%d de %d scripts no bloquean el renderizado (impacto real en Core Web Vitals)"
+              "ok" if ratio_s == 1 else ("warn" if ratio_s >= 0.5 else "error"), pts_s, 2,
+              "%d de %d scripts no bloquean el renderizado (rendimiento real medido por PageSpeed)"
               % (len(deferred), len(ext_scripts)))
     else:
-        a.add("estructura", "scripts", "Scripts externos con defer/async", "info", 6, 6,
+        a.add("estructura", "scripts", "Scripts externos con defer/async", "info", 2, 2,
               "Sin scripts externos")
 
 
@@ -475,52 +503,52 @@ def check_schema(a, site, ctx):
         ctx["lb_node"] = lb
     a.add("schema", "lb_complete", "LocalBusiness completo (name, address, telephone, addressLocality)",
           "ok" if lb_complete else ("warn" if lbs else "error"),
-          10 if lb_complete else (4 if lbs else 0), 10, lb_detail)
+          6 if lb_complete else (2.5 if lbs else 0), 6, lb_detail)
 
     faq = find_nodes(nodes, "FAQPage")
     ctx["faq_schema"] = bool(faq)
     a.add("schema", "faqpage", "FAQPage presente", "ok" if faq else "error",
-          10 if faq else 0, 10, "" if faq else "Sin FAQPage — fuente directa para LLMs")
+          6 if faq else 0, 6, "" if faq else "Sin FAQPage — fuente directa para LLMs")
 
     visible_qs = count_visible_faq(site["soup"])
     ctx["visible_faq"] = visible_qs
     if faq:
         a.add("schema", "faq_dom", "FAQPage con preguntas visibles en el DOM",
-              "ok" if visible_qs else "error", 1 if visible_qs else 0, 1,
+              "ok" if visible_qs else "error", 0.5 if visible_qs else 0, 0.5,
               "%d preguntas visibles" % visible_qs if visible_qs
               else "FAQPage declarado pero sin preguntas visibles → riesgo de penalización por schema engañoso")
     else:
-        a.add("schema", "faq_dom", "FAQPage con preguntas visibles en el DOM", "error", 0, 1,
+        a.add("schema", "faq_dom", "FAQPage con preguntas visibles en el DOM", "error", 0, 0.5,
               "No aplica (sin FAQPage)")
 
     bc = find_nodes(nodes, "BreadcrumbList")
     a.add("schema", "breadcrumb", "BreadcrumbList presente", "ok" if bc else "warn",
-          1 if bc else 0, 1, "" if bc else "No presente")
+          0.5 if bc else 0, 0.5, "" if bc else "No presente")
 
 
 def check_robots(a, site, ctx):
     robots = site["robots"]
     if robots is not None:
-        a.add("robots", "robots_txt", "robots.txt existe", "ok", 1, 1)
+        a.add("robots", "robots_txt", "robots.txt existe", "ok", 0.5, 0.5)
         has_sitemap = any(l.strip().lower().startswith("sitemap:") for l in robots.splitlines())
         a.add("robots", "sitemap", "Sitemap declarado en robots.txt",
-              "ok" if has_sitemap else "warn", 1 if has_sitemap else 0, 1,
+              "ok" if has_sitemap else "warn", 0.5 if has_sitemap else 0, 0.5,
               "" if has_sitemap else "Sin línea Sitemap:")
     else:
-        a.add("robots", "robots_txt", "robots.txt existe", "error", 0, 1, "No existe o no accesible")
-        a.add("robots", "sitemap", "Sitemap declarado en robots.txt", "error", 0, 1, "Sin robots.txt")
+        a.add("robots", "robots_txt", "robots.txt existe", "error", 0, 0.5, "No existe o no accesible")
+        a.add("robots", "sitemap", "Sitemap declarado en robots.txt", "error", 0, 0.5, "Sin robots.txt")
 
     ctx["bots"] = {}
     for bot in AI_BOTS:
         access = bot_access(robots, bot)
         ctx["bots"][bot] = access
         if access == "blocked":
-            a.add("robots", "bot_" + bot, "%s permitido" % bot, "error", 0, 1,
+            a.add("robots", "bot_" + bot, "%s permitido" % bot, "error", 0, 0.5,
                   "❌ BLOQUEADO en robots.txt — este motor de IA no puede leer la web")
         elif access == "allowed":
-            a.add("robots", "bot_" + bot, "%s permitido" % bot, "ok", 1, 1, "Permitido explícitamente")
+            a.add("robots", "bot_" + bot, "%s permitido" % bot, "ok", 0.5, 0.5, "Permitido explícitamente")
         else:
-            a.add("robots", "bot_" + bot, "%s permitido" % bot, "warn", 1, 1,
+            a.add("robots", "bot_" + bot, "%s permitido" % bot, "warn", 0.5, 0.5,
                   "No declarado (acceso implícito)" if access != "no_robots" else "Sin robots.txt (acceso implícito)")
 
     llms = site["llms"]
@@ -765,6 +793,268 @@ def check_ads(a, site):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# BLOQUE 4.6 — PAGESPEED (8 pts, dentro de SEO Técnico)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _ps_vital(a, cid, label, value, good, bad, fmt):
+    """Core Web Vital informativo (0 pts): ✅ ≤good · ⚠️ ≤bad · ❌ >bad."""
+    if value is None:
+        a.add("pagespeed", cid, label, "info", 0, 0, "Sin datos")
+        return
+    st = "ok" if value <= good else ("warn" if value <= bad else "error")
+    a.add("pagespeed", cid, label, st, 0, 0, fmt % value)
+
+
+def check_pagespeed(a, site, ctx):
+    """Rendimiento móvil vía PageSpeed Insights API (gratis con API key)."""
+    if not PAGESPEED_API_KEY:
+        a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "warn", 0, 8,
+              "No configurada — define la variable PAGESPEED_API_KEY (gratis en Google Cloud) "
+              "para medir el rendimiento real (hasta 8 pts)")
+        return
+    try:
+        r = requests.get(PAGESPEED_ENDPOINT, params={
+            "url": site["url"], "strategy": "mobile", "key": PAGESPEED_API_KEY,
+        }, timeout=TIMEOUT)
+        data = r.json()
+    except (requests.exceptions.RequestException, ValueError):
+        a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "warn", 0, 8,
+              "No se pudo consultar PageSpeed (red o cuota agotada) — reinténtalo más tarde")
+        return
+
+    lh = data.get("lighthouseResult", {}) or {}
+    perf = ((lh.get("categories", {}) or {}).get("performance") or {}).get("score")
+    if perf is None:
+        msg = (data.get("error", {}) or {}).get("message", "respuesta sin puntuación")
+        a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "warn", 0, 8,
+              "PageSpeed no devolvió puntuación: %s" % str(msg)[:100])
+        return
+
+    score = round(perf * 100)
+    ctx["pagespeed_score"] = score
+    if score >= 90:
+        a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "ok", 8, 8,
+              "Score móvil %d/100" % score)
+    elif score >= 70:
+        a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "warn", 4, 8,
+              "Score móvil %d/100 (mejorable)" % score)
+    else:
+        a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "error", 0, 8,
+              "Score móvil %d/100 (lento para los estándares de Google)" % score)
+
+    # Core Web Vitals (informativos): datos de campo (CrUX) y fallback a laboratorio
+    audits = lh.get("audits", {}) or {}
+    crux = ((data.get("loadingExperience", {}) or {}).get("metrics", {})) or {}
+
+    def lab(key):
+        return (audits.get(key, {}) or {}).get("numericValue")
+
+    lcp = None
+    if "LARGEST_CONTENTFUL_PAINT_MS" in crux:
+        lcp = crux["LARGEST_CONTENTFUL_PAINT_MS"]["percentile"] / 1000.0
+    elif lab("largest-contentful-paint") is not None:
+        lcp = lab("largest-contentful-paint") / 1000.0
+    _ps_vital(a, "pagespeed_lcp", "LCP — Largest Contentful Paint", lcp, 2.5, 4.0, "%.1f s")
+
+    cls = None
+    if "CUMULATIVE_LAYOUT_SHIFT_SCORE" in crux:
+        cls = crux["CUMULATIVE_LAYOUT_SHIFT_SCORE"]["percentile"] / 100.0
+    elif lab("cumulative-layout-shift") is not None:
+        cls = lab("cumulative-layout-shift")
+    _ps_vital(a, "pagespeed_cls", "CLS — Cumulative Layout Shift", cls, 0.1, 0.25, "%.2f")
+
+    inp = None
+    if "INTERACTION_TO_NEXT_PAINT" in crux:
+        inp = crux["INTERACTION_TO_NEXT_PAINT"]["percentile"]
+    _ps_vital(a, "pagespeed_inp", "INP — Interaction to Next Paint", inp, 200, 500, "%d ms")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BLOQUE 4.7 — CRO / CONVERSIÓN (8 pts)
+# ──────────────────────────────────────────────────────────────────────────────
+
+PHONE_RE = re.compile(r"(?:\+34[\s.\-]?)?[6-9]\d{2}[\s.\-]?\d{2}[\s.\-]?\d{2}[\s.\-]?\d{2}")
+CTA_WORDS = ("contact", "llama", "llamanos", "pide", "reserva", "solicita", "presupuesto",
+             "compra", "empieza", "prueba gratis", "descarga", "pide cita", "reservar",
+             "consulta", "escribenos", "mas informacion", "comprar", "apuntate")
+
+
+def check_cro(a, site, ctx):
+    soup = site["soup"]
+    html = site["html"].decode("utf-8", errors="ignore")
+    low = html.lower()
+
+    wa = "wa.me" in low or "whatsapp.com" in low or "api.whatsapp" in low
+    a.add("cro", "cro_whatsapp", "WhatsApp visible", "ok" if wa else "warn",
+          2 if wa else 0, 2,
+          "Enlace a WhatsApp detectado" if wa else "Sin enlace a WhatsApp — canal directo muy usado en España")
+
+    body = soup.body
+    text = body.get_text(" ", strip=True) if body else soup.get_text(" ", strip=True)
+    phone = bool(soup.select_one('a[href^="tel:"]')) or bool(PHONE_RE.search(text))
+    a.add("cro", "cro_phone", "Teléfono visible", "ok" if phone else "warn",
+          2 if phone else 0, 2,
+          "Teléfono detectado en la página" if phone else "Sin teléfono visible")
+
+    form = bool(soup.find("form"))
+    a.add("cro", "cro_form", "Formulario de contacto", "ok" if form else "warn",
+          2 if form else 0, 2, "<form> detectado" if form else "Sin formulario de contacto")
+
+    hero = body.decode_contents()[:1000].lower() if body else ""
+    has_btn = any(m in hero for m in ("<button", 'role="button"', 'type="submit"', "btn", "cta"))
+    has_cta_text = any(w in _norm(hero) for w in CTA_WORDS)
+    cta = ("<a " in hero or "<button" in hero) and (has_btn or has_cta_text)
+    a.add("cro", "cro_cta", "CTA visible en el hero", "ok" if cta else "warn",
+          2 if cta else 0, 2,
+          "Llamada a la acción detectada arriba" if cta else "Sin CTA clara en la parte superior")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BLOQUE 4.8 — DIRECTORIOS LOCALES (4 pts) + COMPETENCIA y CONTENIDO (informativos)
+# ──────────────────────────────────────────────────────────────────────────────
+
+DIRECTORY_DOMAINS = ("paginasamarillas", "yelp.", "tripadvisor", "idealista", "fotocasa",
+                     "doctoralia", "booking.com", "eltenedor", "thefork", "cylex", "infoisinfo",
+                     "treatwell", "facebook.", "instagram.", "linkedin.", "youtube.",
+                     "twitter.", "x.com", "google.", "wikipedia.", "amazon.", "tuugo", "11870")
+
+
+def _google_search_html(query, num=10):
+    """HTML de una búsqueda en Google (best-effort). None si falla o bloquea."""
+    try:
+        r = requests.get("https://www.google.es/search",
+                         params={"q": query, "num": num, "hl": "es", "gl": "es"},
+                         headers=BROWSER_HEADERS, timeout=TIMEOUT_SHORT)
+    except requests.exceptions.RequestException:
+        return None
+    if r.status_code != 200:
+        return None
+    return r.text
+
+
+def _extract_organic_urls(html, exclude=(), limit=10):
+    """URLs orgánicas (no ads, no directorios/redes) de una SERP de Google."""
+    from urllib.parse import unquote
+    cands = re.findall(r'/url\?q=(https?://[^&"]+)', html)
+    cands += re.findall(r'<a[^>]+href="(https?://[^"]+)"', html)
+    urls, seen = [], set()
+    for raw in cands:
+        u = unquote(raw)
+        host = urlparse(u).netloc.lower()
+        if not host or host in seen:
+            continue
+        if any(d in host for d in ("google.", "gstatic.", "googleusercontent", "googleadservices")):
+            continue
+        if any(x and x in host for x in exclude):
+            continue
+        seen.add(host)
+        urls.append(u)
+        if len(urls) >= limit:
+            break
+    return urls
+
+
+def _directory_presence(nombre, dom):
+    """→ True (aparece) | False (no aparece) | None (no verificable)."""
+    html = _google_search_html('"%s" site:%s' % (nombre, dom))
+    if html is None:
+        return None
+    low = html.lower()
+    if "/sorry/" in low or "consent.google" in low or "unusual traffic" in low:
+        return None
+    for u in _extract_organic_urls(html, exclude=(), limit=10):
+        if dom.lower() in urlparse(u).netloc.lower():
+            return True
+    if any(s in low for s in ("no se han encontrado resultados",
+                              "did not match any documents", "no results found")):
+        return False
+    return bool(re.search(r'https?://[^"\'>]*%s' % re.escape(dom), low))
+
+
+def check_directorios(a, ctx):
+    nombre, sector = ctx["nombre"], ctx["sector"]
+    skey = sector_key(sector)
+    dirs = (DIRECTORIOS_BASE + DIRECTORIOS_SECTOR.get(skey, DIRECTORIOS_DEFAULT))[:4]
+    ctx["directorios"] = {}
+    for dom in dirs:
+        present = _directory_presence(nombre, dom)
+        ctx["directorios"][dom] = present
+        if present is True:
+            a.add("directorios", "dir_" + dom, "Presencia en %s" % dom, "ok", 1, 1, "Ficha detectada")
+        elif present is False:
+            a.add("directorios", "dir_" + dom, "Presencia en %s" % dom, "warn", 0, 1,
+                  "No detectada — darse de alta refuerza el NAP y el SEO local")
+        else:
+            a.add("directorios", "dir_" + dom, "Presencia en %s" % dom, "info", 0, 1,
+                  "No verificable (Google limitó la consulta)")
+
+
+def _quick_site_checks(url):
+    """Checks básicos de un competidor (best-effort). None si no responde."""
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT_SHORT, allow_redirects=True)
+    except requests.exceptions.RequestException:
+        return None
+    if r.status_code >= 400:
+        return None
+    root = "{0}://{1}".format(urlparse(r.url).scheme, urlparse(r.url).netloc)
+    soup = BeautifulSoup(r.content, "html.parser")
+    title_tag = soup.find("title")
+    title_txt = title_tag.get_text(strip=True) if title_tag else ""
+    nodes, _, _ = collect_jsonld(soup)
+    return {
+        "host": urlparse(r.url).netloc.lower().replace("www.", ""),
+        "title_ok": bool(title_txt) and len(title_txt) <= 65,
+        "lb": bool(find_localbusiness(nodes)),
+        "faq": bool(find_nodes(nodes, "FAQPage")),
+        "llms": bool((_fetch_optional(root + "/llms.txt", timeout=TIMEOUT_SHORT) or "").strip()),
+        "robots": _fetch_optional(root + "/robots.txt", timeout=TIMEOUT_SHORT) is not None,
+    }
+
+
+def check_competidores(audit, site, ctx):
+    """Top 5 competidores orgánicos para '{sector} {ciudad}' + checks básicos."""
+    sector, ciudad, url_cliente = ctx["sector"], ctx["ciudad"], ctx["url"]
+    client_host = urlparse(url_cliente).netloc.lower().replace("www.", "")
+    competidores = []
+    html = _google_search_html("%s %s" % (sector, ciudad))
+    if html:
+        low = html.lower()
+        if not any(s in low for s in ("/sorry/", "consent.google", "unusual traffic")):
+            exclude = DIRECTORY_DOMAINS + (client_host,)
+            for u in _extract_organic_urls(html, exclude=exclude, limit=12):
+                if len(competidores) >= 5:
+                    break
+                checks = _quick_site_checks(u)
+                if checks and checks["host"] != client_host:
+                    competidores.append(checks)
+    ctx["competidores"] = competidores
+
+    nodes = ctx.get("jsonld_nodes", [])
+    t = next((c for c in audit.checks if c["id"] == "title_len"), None)
+    ctx["cliente_checks"] = {
+        "host": client_host,
+        "title_ok": bool(t and t["status"] == "ok"),
+        "lb": bool(find_localbusiness(nodes)),
+        "faq": ctx.get("faq_schema", False),
+        "llms": ctx.get("llms_ok", False),
+        "robots": site["robots"] is not None,
+    }
+
+
+def check_contenido(site, ctx):
+    """Inventario de contenido: páginas en sitemap y artículos de blog."""
+    urls = set(_fetch_sitemap_urls(site))
+    blog_pat = ("/blog/", "/noticias/", "/articulos/", "/articulo/", "/post/", "/posts/")
+    blog_urls = [u for u in urls if any(p in u.lower() for p in blog_pat)]
+    ctx["contenido"] = {
+        "total": len(urls),
+        "has_blog": len(blog_urls) > 0,
+        "blog_count": len(blog_urls),
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # BLOQUE 5 — PUNTUACIÓN GLOBAL Y NIVEL
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -930,6 +1220,26 @@ FIX_GUIDE = {
                      "Permiten posicionar y ser citado por la IA para cada ciudad/barrio donde opera el negocio.",
                      "Tráfico y recomendaciones de IA en cada zona, no solo en la ciudad principal.",
                      "Crear una página por zona con contenido propio (servicio + zona), enlazada desde el menú."),
+    "pagespeed_score": ("El rendimiento móvil (Core Web Vitals) mide la velocidad real de carga e interacción.",
+                        "Google rankea según estas métricas y los usuarios abandonan las webs lentas.",
+                        "Posiciones en móvil (>60% del tráfico) y conversiones perdidas por abandono.",
+                        "Optimizar imágenes (WebP), diferir JS, usar caché/CDN y reducir el CSS bloqueante."),
+    "cro_whatsapp": ("Un enlace a WhatsApp permite contactar en un toque desde el móvil.",
+                     "Es el canal de contacto más inmediato y usado en España.",
+                     "Leads que se enfrían porque no encuentran un canal directo de contacto.",
+                     "Añadir un botón flotante wa.me/<número> visible en todas las páginas."),
+    "cro_phone": ("El teléfono visible (y como enlace tel:) facilita la llamada inmediata.",
+                  "Muchos clientes locales prefieren llamar justo cuando tienen la intención.",
+                  "Llamadas perdidas de clientes con alta intención de compra.",
+                  'Mostrar el teléfono en la cabecera como <a href="tel:+34...">.'),
+    "cro_form": ("Un formulario de contacto capta a quien prefiere escribir antes que llamar.",
+                 "Permite recoger leads fuera del horario de atención.",
+                 "Leads de usuarios que no llaman pero sí dejarían sus datos.",
+                 "Añadir un <form> de contacto sencillo (nombre, contacto y mensaje)."),
+    "cro_cta": ("La llamada a la acción del hero guía al visitante hacia el siguiente paso.",
+                "Sin un CTA claro arriba, el usuario no sabe qué hacer al entrar.",
+                "Conversión: visitas que se van sin pedir cita, presupuesto o contacto.",
+                "Colocar un botón claro en el hero: 'Pide cita', 'Solicita presupuesto', etc."),
 }
 
 
@@ -971,7 +1281,7 @@ def _fig_b64(plt, fig):
 def generate_charts(audit_data):
     """Genera las 3 gráficas del informe como PNG en base64.
 
-    audit_data: seo/geo/aeo y sus _max, score, ingresos_mes y los contadores
+    audit_data: seo/geo/aeo/autoridad/cro/directorios y sus _max, score y los contadores
     checks_ok/checks_warn/checks_error.
     Devuelve {'areas', 'roi', 'checks'} → string base64 de cada PNG.
     Si matplotlib no está disponible devuelve {} y el informe sale sin gráficas.
@@ -997,20 +1307,22 @@ def generate_charts(audit_data):
     charts = {}
     with matplotlib.rc_context(rc):
 
-        # ── 1. Puntuación por área (barras horizontales, 600x300) ──
-        fig, ax = plt.subplots(figsize=(600 / CHART_DPI, 300 / CHART_DPI), dpi=CHART_DPI)
+        # ── 1. Puntuación por área (barras horizontales, 600x360) ──
+        fig, ax = plt.subplots(figsize=(600 / CHART_DPI, 360 / CHART_DPI), dpi=CHART_DPI)
         fig.patch.set_facecolor(CHART_BG)
         ax.set_facecolor(CHART_BG)
         areas = [  # de abajo arriba: SEO queda en la primera fila visible
-            ("Presencia/Autoridad", audit_data.get("autoridad", 0), audit_data.get("autoridad_max", 0), "++"),
+            ("Directorios", audit_data.get("directorios", 0), audit_data.get("directorios_max", 0), "oo"),
+            ("Conversión (CRO)", audit_data.get("cro", 0), audit_data.get("cro_max", 0), "\\\\"),
+            ("Autoridad", audit_data.get("autoridad", 0), audit_data.get("autoridad_max", 0), "++"),
             ("AEO", audit_data["aeo"], audit_data["aeo_max"], ".."),
             ("GEO", audit_data["geo"], audit_data["geo_max"], "xx"),
             ("SEO Técnico", audit_data["seo"], audit_data["seo_max"], "//"),
         ]
         ys = range(len(areas))
-        ax.barh(ys, [a[2] for a in areas], color=CHART_TRACK, height=0.58)
+        ax.barh(ys, [a[2] for a in areas], color=CHART_TRACK, height=0.6)
         for y, (_, pts, maxp, hatch) in zip(ys, areas):
-            ax.barh(y, pts, color=_color_pct(pts / maxp if maxp else 1), height=0.58,
+            ax.barh(y, pts, color=_color_pct(pts / maxp if maxp else 1), height=0.6,
                     hatch=hatch, edgecolor=CHART_BG, linewidth=0.8)
             ax.text(maxp + 1, y, "%s/%s" % (fmt_pts(pts), fmt_pts(maxp)),
                     va="center", fontsize=9, color=CHART_FG)
@@ -1025,32 +1337,7 @@ def generate_charts(audit_data):
         fig.tight_layout()
         charts["areas"] = _fig_b64(plt, fig)
 
-        # ── 2. ROI comparativo (barras verticales, 600x350) ──
-        fig, ax = plt.subplots(figsize=(600 / CHART_DPI, 350 / CHART_DPI), dpi=CHART_DPI)
-        fig.patch.set_facecolor(CHART_BG)
-        ax.set_facecolor(CHART_BG)
-        potencial = audit_data["ingresos_mes"]
-        actual = potencial * 0.2  # estimación conservadora sin mejoras
-        bars = ax.bar([0, 1], [actual, potencial], width=0.5,
-                      color=[CHART_RED, CHART_GREEN], edgecolor=CHART_BG, linewidth=0.8)
-        bars[0].set_hatch("xx")
-        bars[1].set_hatch("//")
-        tope = max(potencial, 1)
-        for bar, val in zip(bars, (actual, potencial)):
-            ax.text(bar.get_x() + bar.get_width() / 2, val + tope * 0.03,
-                    "%d €/mes" % round(val), ha="center", fontsize=10, color=CHART_FG)
-        ax.set_xticks([0, 1])
-        ax.set_xticklabels(["Situación actual", "Con mejoras aplicadas"], fontsize=10)
-        ax.set_yticks([])
-        ax.set_ylim(0, tope * 1.2)
-        ax.tick_params(length=0)
-        for sp in ax.spines.values():
-            sp.set_visible(False)
-        ax.set_title("Impacto económico estimado (€/mes)", fontsize=12, pad=12)
-        fig.tight_layout()
-        charts["roi"] = _fig_b64(plt, fig)
-
-        # ── 3. Resumen de checks (donut, 400x400) ──
+        # ── 2. Resumen de checks (donut, 400x400) ──
         fig, ax = plt.subplots(figsize=(400 / CHART_DPI, 400 / CHART_DPI), dpi=CHART_DPI)
         fig.patch.set_facecolor(CHART_BG)
         ax.set_facecolor(CHART_BG)
@@ -1107,6 +1394,11 @@ def top_problemas(audit):
         "about": "No hay página 'Quiénes somos': falta la señal de confianza (E-E-A-T) que la IA usa para recomendar entidades verificables.",
         "casos": "No hay casos de éxito ni testimonios: falta la prueba social que convierte y que la IA puede citar.",
         "arquitectura": "No hay páginas locales por zona: el negocio solo compite en su ciudad principal y pierde las zonas de alrededor.",
+        "pagespeed_score": "La web es lenta en móvil: Google la penaliza y los usuarios se van antes de convertir.",
+        "cro_whatsapp": "No hay WhatsApp visible: se pierde el canal de contacto más inmediato del cliente.",
+        "cro_phone": "El teléfono no está visible: dificultas que te llamen justo cuando tienen la intención.",
+        "cro_form": "No hay formulario de contacto: pierdes los leads que prefieren escribir a llamar.",
+        "cro_cta": "Falta una llamada a la acción clara arriba: el visitante no sabe qué hacer al entrar.",
     }
     fallos = sorted(audit.failed(), key=lambda c: c["max"] - c["points"], reverse=True)
     out = []
@@ -1136,6 +1428,13 @@ ACTIONS = [
     (["bot_GPTBot", "bot_ClaudeBot", "bot_PerplexityBot", "bot_Google-Extended"],
      "Desbloquear bots de IA en robots.txt", "Alto", "Bajo"),
     (["gbp"], "Crear/optimizar la ficha de Google Business Profile", "Alto", "Bajo"),
+    (["pagespeed_score"], "Optimizar el rendimiento móvil (Core Web Vitals)", "Alto", "Medio"),
+    (["cro_whatsapp", "cro_phone", "cro_form", "cro_cta"],
+     "Mejorar la conversión: WhatsApp, teléfono, formulario y CTA visibles", "Alto", "Bajo"),
+    (["dir_paginasamarillas.es", "dir_yelp.es", "dir_tripadvisor.es", "dir_eltenedor.es",
+      "dir_booking.com", "dir_idealista.com", "dir_fotocasa.es", "dir_doctoralia.es",
+      "dir_cylex.es", "dir_treatwell.es", "dir_infoisinfo.es"],
+     "Dar de alta el negocio en directorios locales relevantes", "Medio", "Bajo"),
     (["arquitectura"], "Crear páginas locales por zona de cobertura", "Alto", "Medio"),
     (["about"], 'Publicar página "Quiénes somos" (equipo y experiencia)', "Medio", "Bajo"),
     (["casos"], "Añadir casos de éxito / testimonios (+ schema Review)", "Medio", "Medio"),
@@ -1157,12 +1456,8 @@ EFFORT_RANK = {"Bajo": 0, "Medio": 1, "Alto": 2}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ROI y productos WhiteMoon
+# Productos WhiteMoon
 # ──────────────────────────────────────────────────────────────────────────────
-
-PRECIO_AUDITORIA = 899
-TASA_CONVERSION = 0.08
-VISITAS_POR_PUNTO = 0.5  # visitas/mes nuevas por cada punto de score recuperado
 
 # Ticket medio por sector (clave: sector tal como se selecciona en el formulario)
 SECTOR_TICKETS = {
@@ -1336,20 +1631,20 @@ def business_name_from_title(title, fallback):
 
 
 def split_scores(audit, seo_pts, seo_max, geo_pts, geo_max, aeo_pts, aeo_max,
-                 aut_pts=0, aut_max=0):
-    """Reparte el score en dos métricas sin doble conteo:
-    - Score Técnico  = SEO + Schema + Robots (sin llms.txt)
-    - Score Control IA = GEO + AEO + Presencia/Autoridad + llms.txt
+                 aut_pts=0, aut_max=0, cro_pts=0, cro_max=0, dir_pts=0, dir_max=0):
+    """Reparte el score en dos métricas que suman el global:
+    - Score Técnico  = SEO (incl. PageSpeed, sin llms.txt) + CRO
+    - Score Control IA = GEO + AEO + Autoridad + Directorios + llms.txt
     El llms.txt está en el área 'robots', así que se mueve a Control IA.
-    La Presencia y Autoridad (E-E-A-T) cuenta como Control IA: define cómo
-    los motores de IA representan y recomiendan al negocio."""
+    Autoridad/Directorios (E-E-A-T) y GEO/AEO definen cómo la IA representa y
+    recomienda al negocio; CRO es técnico de la propia web (conversión)."""
     llms = next((c for c in audit.checks if c["id"] == "llms_txt"), None)
     llms_pts = llms["points"] if llms else 0
     llms_max = llms["max"] if llms else 0
-    tecnico_pts = round(seo_pts - llms_pts, 1)
-    tecnico_max = round(seo_max - llms_max, 1)
-    control_pts = round(geo_pts + aeo_pts + aut_pts + llms_pts, 1)
-    control_max = round(geo_max + aeo_max + aut_max + llms_max, 1)
+    tecnico_pts = round(seo_pts - llms_pts + cro_pts, 1)
+    tecnico_max = round(seo_max - llms_max + cro_max, 1)
+    control_pts = round(geo_pts + aeo_pts + aut_pts + dir_pts + llms_pts, 1)
+    control_max = round(geo_max + aeo_max + aut_max + dir_max + llms_max, 1)
     return tecnico_pts, tecnico_max, control_pts, control_max
 
 
@@ -1357,26 +1652,23 @@ def render_report(audit, site, ctx):
     nombre, sector, ciudad = ctx["nombre"], ctx["sector"], ctx["ciudad"]
     hoy = date.today().isoformat()
 
-    seo_pts, seo_max = audit.area_score("meta", "estructura", "schema", "robots")
+    seo_pts, seo_max = audit.area_score("meta", "estructura", "schema", "robots", "pagespeed")
     geo_pts, geo_max = audit.area_score("geo")
     aeo_pts, aeo_max = audit.area_score("aeo")
     aut_pts, aut_max = audit.area_score("autoridad")
-    score = round(seo_pts + geo_pts + aeo_pts + aut_pts)
+    cro_pts, cro_max = audit.area_score("cro")
+    dir_pts, dir_max = audit.area_score("directorios")
+    score = round(seo_pts + geo_pts + aeo_pts + aut_pts + cro_pts + dir_pts)
     emoji, nombre_nivel, desc_nivel = nivel(score)
 
-    # Dos métricas: el llms.txt vive en el área "robots" pero conceptualmente
-    # es Control IA, así que se reasigna para que el global siga siendo la suma.
+    # Dos métricas que suman el global (CRO → técnico, Directorios → control IA).
     tecnico_pts, tecnico_max, control_pts, control_max = split_scores(
-        audit, seo_pts, seo_max, geo_pts, geo_max, aeo_pts, aeo_max, aut_pts, aut_max)
+        audit, seo_pts, seo_max, geo_pts, geo_max, aeo_pts, aeo_max, aut_pts, aut_max,
+        cro_pts, cro_max, dir_pts, dir_max)
 
     plan = plan_de_accion(audit)
     ganancia = round(sum(p["pts"] for p in plan))
     score_potencial = min(100, score + ganancia)
-
-    ticket = ticket_sector(sector)
-    puntos_rec = max(score_potencial - score, 0)
-    visitas = puntos_rec * VISITAS_POR_PUNTO
-    ingresos = visitas * ticket * TASA_CONVERSION
 
     try:
         charts = generate_charts({
@@ -1384,7 +1676,9 @@ def render_report(audit, site, ctx):
             "geo": geo_pts, "geo_max": geo_max,
             "aeo": aeo_pts, "aeo_max": aeo_max,
             "autoridad": aut_pts, "autoridad_max": aut_max,
-            "score": score, "ingresos_mes": ingresos,
+            "cro": cro_pts, "cro_max": cro_max,
+            "directorios": dir_pts, "directorios_max": dir_max,
+            "score": score,
             "checks_ok": sum(1 for c in audit.checks if c["status"] == "ok"),
             "checks_warn": sum(1 for c in audit.checks if c["status"] == "warn"),
             "checks_error": sum(1 for c in audit.checks if c["status"] == "error"),
@@ -1418,17 +1712,25 @@ def render_report(audit, site, ctx):
     w("")
     w("**Puntuación global: %d/100 — %s %s** (%s)" % (score, emoji, nombre_nivel, desc_nivel))
     w("")
-    w("- 🔧 **Score Técnico** (SEO + Schema + Robots): **%s/%s** %s"
+    w("- 🔧 **Score Técnico** (SEO + PageSpeed + CRO, sin llms.txt): **%s/%s** %s"
       % (fmt_pts(tecnico_pts), fmt_pts(tecnico_max), estado_emoji(tecnico_pts, tecnico_max)))
-    w("- 🤖 **Score Control IA** (GEO + AEO + Presencia/Autoridad + llms.txt): **%s/%s** %s"
+    w("- 🤖 **Score Control IA** (GEO + AEO + Autoridad + Directorios + llms.txt): **%s/%s** %s"
       % (fmt_pts(control_pts), fmt_pts(control_max), estado_emoji(control_pts, control_max)))
     w("")
-    w("| Área | Puntuación | Estado |")
-    w("|------|-----------|--------|")
-    w("| SEO técnico | %s/%s | %s |" % (fmt_pts(seo_pts), fmt_pts(seo_max), estado_emoji(seo_pts, seo_max)))
-    w("| GEO — Visibilidad local IA | %s/%s | %s |" % (fmt_pts(geo_pts), fmt_pts(geo_max), estado_emoji(geo_pts, geo_max)))
-    w("| AEO — Respuestas en IA | %s/%s | %s |" % (fmt_pts(aeo_pts), fmt_pts(aeo_max), estado_emoji(aeo_pts, aeo_max)))
-    w("| Presencia y Autoridad | %s/%s | %s |" % (fmt_pts(aut_pts), fmt_pts(aut_max), estado_emoji(aut_pts, aut_max)))
+    w("**Puntuación por área:**")
+    w("")
+    w("- 🔧 SEO Técnico: **%s/%s** %s"
+      % (fmt_pts(seo_pts), fmt_pts(seo_max), estado_emoji(seo_pts, seo_max)))
+    w("- 🌍 GEO Local IA: **%s/%s** %s"
+      % (fmt_pts(geo_pts), fmt_pts(geo_max), estado_emoji(geo_pts, geo_max)))
+    w("- 💬 AEO Respuestas: **%s/%s** %s"
+      % (fmt_pts(aeo_pts), fmt_pts(aeo_max), estado_emoji(aeo_pts, aeo_max)))
+    w("- 🏆 Autoridad: **%s/%s** %s"
+      % (fmt_pts(aut_pts), fmt_pts(aut_max), estado_emoji(aut_pts, aut_max)))
+    w("- 🎯 Conversión (CRO): **%s/%s** %s"
+      % (fmt_pts(cro_pts), fmt_pts(cro_max), estado_emoji(cro_pts, cro_max)))
+    w("- 🗂️ Directorios locales: **%s/%s** %s"
+      % (fmt_pts(dir_pts), fmt_pts(dir_max), estado_emoji(dir_pts, dir_max)))
     w("")
     w_chart("checks", "Resumen de checks")
     w("**En una frase:** %s" % frase_resumen(score, nombre, sector, ciudad))
@@ -1462,6 +1764,19 @@ def render_report(audit, site, ctx):
             if c["id"] == "types":
                 w("- ℹ️ **Tipos de schema detectados:** %s" % (c["detail"] or "ninguno"))
                 continue
+            detail = " — %s" % c["detail"] if c["detail"] else ""
+            w("- %s **%s**%s" % (STATUS_EMOJI[c["status"]], c["label"], detail))
+            _render_fix(w, c)
+        w("")
+
+    # PageSpeed (rendimiento real, dentro de SEO Técnico)
+    ps_checks = [c for c in audit.checks if c["area"] == "pagespeed"]
+    if ps_checks:
+        ps_pts = sum(c["points"] for c in ps_checks)
+        ps_max = sum(c["max"] for c in ps_checks)
+        w("#### Rendimiento — PageSpeed Insights (%s/%s pts)" % (fmt_pts(ps_pts), fmt_pts(ps_max)))
+        w("")
+        for c in ps_checks:
             detail = " — %s" % c["detail"] if c["detail"] else ""
             w("- %s **%s**%s" % (STATUS_EMOJI[c["status"]], c["label"], detail))
             _render_fix(w, c)
@@ -1511,6 +1826,34 @@ def render_report(audit, site, ctx):
     w("> que la IA cruza para decidir a quién cita.")
     w("")
 
+    # ── CRO / Conversión ──
+    w("### Conversión (CRO)")
+    w("")
+    w("Puntuación: **%s/%s puntos**" % (fmt_pts(cro_pts), fmt_pts(cro_max)))
+    w("")
+    for c in [c for c in audit.checks if c["area"] == "cro"]:
+        detail = " — %s" % c["detail"] if c["detail"] else ""
+        w("- %s **%s**%s" % (STATUS_EMOJI[c["status"]], c["label"], detail))
+        _render_fix(w, c)
+    w("")
+    w("> Atraer visitas no sirve si no convierten: WhatsApp, teléfono, formulario y una")
+    w("> llamada a la acción clara son lo mínimo para transformar la visita en cliente.")
+    w("")
+
+    # ── Directorios locales ──
+    w("### Directorios locales")
+    w("")
+    w("Puntuación: **%s/%s puntos**" % (fmt_pts(dir_pts), fmt_pts(dir_max)))
+    w("")
+    for c in [c for c in audit.checks if c["area"] == "directorios"]:
+        detail = " — %s" % c["detail"] if c["detail"] else ""
+        w("- %s **%s**%s" % (STATUS_EMOJI[c["status"]], c["label"], detail))
+        _render_fix(w, c)
+    w("")
+    w("> Las citas en directorios refuerzan el NAP (nombre, dirección, teléfono) y la")
+    w("> autoridad local que Google y la IA usan para validar el negocio.")
+    w("")
+
     # ── Robots ──
     w("### Robots y Acceso para Bots IA")
     w("")
@@ -1541,8 +1884,52 @@ def render_report(audit, site, ctx):
         detail = " — %s" % c["detail"] if c["detail"] else ""
         w("- %s **%s**%s" % (STATUS_EMOJI[c["status"]], c["label"], detail))
     w("")
+
+    # ── Inventario de contenido ──
+    cont = ctx.get("contenido")
+    if cont:
+        w("### Inventario de contenido")
+        w("")
+        if cont["total"]:
+            blog = ("Sí (%d artículos)" % cont["blog_count"]) if cont["has_blog"] else "No"
+            w("**%d páginas indexadas** (sitemap) · **Blog:** %s" % (cont["total"], blog))
+        else:
+            w("No se pudo leer el sitemap.xml para inventariar el contenido.")
+        w("")
+        w("> Más contenido útil y actualizado = más superficie para que la IA y Google te citen.")
+        w("")
     w("---")
     w("")
+
+    # ── Análisis de competencia ──
+    comp = ctx.get("competidores")
+    cli = ctx.get("cliente_checks")
+    if comp or cli:
+        w("## 🥊 ANÁLISIS DE COMPETENCIA")
+        w("*(Top resultados orgánicos para \"%s en %s\" — informativo)*" % (sector, ciudad))
+        w("")
+        if comp:
+            def _si(b):
+                return "✅" if b else "❌"
+            w("| Web | Title ≤65 | LocalBusiness | FAQPage | llms.txt | robots.txt |")
+            w("|-----|:---------:|:-------------:|:-------:|:--------:|:----------:|")
+            if cli:
+                w("| **%s (tú)** | %s | %s | %s | %s | %s |" % (
+                    cli["host"], _si(cli["title_ok"]), _si(cli["lb"]), _si(cli["faq"]),
+                    _si(cli["llms"]), _si(cli["robots"])))
+            for c in comp:
+                w("| %s | %s | %s | %s | %s | %s |" % (
+                    c["host"], _si(c["title_ok"]), _si(c["lb"]), _si(c["faq"]),
+                    _si(c["llms"]), _si(c["robots"])))
+            w("")
+            w("> Compárate con quien ya aparece arriba: las columnas en ❌ de tu fila son")
+            w("> exactamente las ventajas que hoy te llevan tus competidores.")
+        else:
+            w("No se pudieron extraer competidores automáticamente (Google limitó la consulta).")
+            w("Repite la búsqueda manualmente: \"%s en %s\" y compara las 5 primeras webs." % (sector, ciudad))
+        w("")
+        w("---")
+        w("")
 
     # ── Qué mejora con esta auditoría ──
     queries = ['- "%s en %s"' % (sector, ciudad),
@@ -1661,30 +2048,17 @@ def render_report(audit, site, ctx):
     w("---")
     w("")
 
-    # ── ROI estimado ──
-    w("## 📈 ROI ESTIMADO")
-    w("*(Impacto económico de corregir los errores detectados)*")
+    # ── Potencial de mejora ──
+    w("## 📈 POTENCIAL DE MEJORA")
     w("")
-    if ingresos > 0:
-        meses = PRECIO_AUDITORIA / ingresos
-        w("Con una tasa de conversión estimada del %d%% (visita desde IA → cliente):"
-          % int(TASA_CONVERSION * 100))
-        w("")
-        w("| Métrica | Estimación |")
-        w("|---------|-----------|")
-        w("| Visitas nuevas desde IA/mes | %s |" % fmt_pts(visitas))
-        w("| Ticket medio sector | %d€ |" % ticket)
-        w("| Ingresos adicionales estimados/mes | %d€ |" % round(ingresos))
-        w("| Meses para recuperar la auditoría (%d€) | %s meses |"
-          % (PRECIO_AUDITORIA, fmt_pts(round(meses, 1))))
-        w("")
-        w_chart("roi", "Impacto económico estimado")
-    else:
-        w("La web ya alcanza el máximo de los checks puntuables: el retorno aquí "
-          "está en mantener la posición frente a competidores que están implementando GEO/AEO.")
+    w("**Score actual:** %d/100" % score)
+    w("**Score potencial tras implementar el plan:** %d/100" % score_potencial)
+    w("**Diferencia:** +%d puntos" % max(score_potencial - score, 0))
     w("")
-    w("*Estimación conservadora basada en benchmarks del sector. Los resultados "
-      "reales dependen de la implementación y competencia local.*")
+    w("Las mejoras técnicas identificadas eliminan barreras que impiden que los motores")
+    w("de búsqueda e IA indexen y recomienden tu negocio correctamente. El impacto en")
+    w("tráfico y clientes depende de factores adicionales como autoridad de dominio,")
+    w("competencia local y presupuesto de contenidos.")
     w("")
     w("---")
     w("")
@@ -1786,7 +2160,7 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports", html_manual=N
         "sí" if site["llms"] else "no"))
 
     audit = Audit()
-    ctx = {"nombre": nombre, "sector": sector, "ciudad": ciudad}
+    ctx = {"nombre": nombre, "sector": sector, "ciudad": ciudad, "url": site["url"]}
 
     check_meta_tags(audit, site, ctx)
     check_structure(audit, site)
@@ -1796,6 +2170,11 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports", html_manual=N
     check_aeo(audit, site, ctx)
     check_autoridad(audit, site, ctx)
     check_ads(audit, site)
+    check_pagespeed(audit, site, ctx)
+    check_cro(audit, site, ctx)
+    check_directorios(audit, ctx)
+    check_contenido(site, ctx)
+    check_competidores(audit, site, ctx)
 
     report, score = render_report(audit, site, ctx)
 
@@ -1812,12 +2191,15 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports", html_manual=N
     print("✓ Score: %d/100 %s %s" % (score, emoji, nombre_nivel))
     print("✓ Informe generado: %s" % path)
 
-    seo_pts, seo_max = audit.area_score("meta", "estructura", "schema", "robots")
+    seo_pts, seo_max = audit.area_score("meta", "estructura", "schema", "robots", "pagespeed")
     geo_pts, geo_max = audit.area_score("geo")
     aeo_pts, aeo_max = audit.area_score("aeo")
     aut_pts, aut_max = audit.area_score("autoridad")
+    cro_pts, cro_max = audit.area_score("cro")
+    dir_pts, dir_max = audit.area_score("directorios")
     tecnico_pts, tecnico_max, control_pts, control_max = split_scores(
-        audit, seo_pts, seo_max, geo_pts, geo_max, aeo_pts, aeo_max, aut_pts, aut_max)
+        audit, seo_pts, seo_max, geo_pts, geo_max, aeo_pts, aeo_max, aut_pts, aut_max,
+        cro_pts, cro_max, dir_pts, dir_max)
     errores = [{"check": c["label"], "detail": c["detail"]}
                for c in audit.checks if c["status"] == "error"]
     warnings = [{"check": c["label"], "detail": c["detail"]}
@@ -1830,6 +2212,8 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports", html_manual=N
         "geo": geo_pts, "geo_max": geo_max,
         "aeo": aeo_pts, "aeo_max": aeo_max,
         "autoridad": aut_pts, "autoridad_max": aut_max,
+        "cro": cro_pts, "cro_max": cro_max,
+        "directorios": dir_pts, "directorios_max": dir_max,
         "tecnico": tecnico_pts, "tecnico_max": tecnico_max,
         "control": control_pts, "control_max": control_max,
         "frase": frase_resumen(score, nombre, sector, ciudad),

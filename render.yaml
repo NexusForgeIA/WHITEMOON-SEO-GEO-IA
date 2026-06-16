@@ -7,3 +7,7 @@ services:
     envVars:
       - key: AUDIT_PASSWORD
         sync: false
+      # Opcional: API gratuita de PageSpeed Insights (Google Cloud Console).
+      # Sin ella, el check de rendimiento sale como "No configurada".
+      - key: PAGESPEED_API_KEY
+        sync: false

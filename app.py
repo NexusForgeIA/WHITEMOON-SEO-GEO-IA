@@ -163,6 +163,8 @@ def audit():
         geo=result["geo"], geo_max=result["geo_max"],
         aeo=result["aeo"], aeo_max=result["aeo_max"],
         autoridad=result["autoridad"], autoridad_max=result["autoridad_max"],
+        cro=result["cro"], cro_max=result["cro_max"],
+        directorios=result["directorios"], directorios_max=result["directorios_max"],
         tecnico=result["tecnico"], tecnico_max=result["tecnico_max"],
         control=result["control"], control_max=result["control_max"],
         frase=result["frase"],
