@@ -57,7 +57,9 @@
   var wakeTimer = null;
 
   // Plan gratuito de Render: el servidor puede tardar ~50s en despertar
-  var AUDIT_TIMEOUT_MS = 120000;
+  // 170s: por debajo del --timeout 180 de gunicorn, para que sea el cliente quien
+  // se rinda con un mensaje claro y no el worker muriendo a mitad de respuesta.
+  var AUDIT_TIMEOUT_MS = 170000;
   var WAKE_MSG = "El servidor está despertando, puede tardar hasta 60 segundos la primera vez...";
 
   var NIVEL_COLOR = {
@@ -161,10 +163,26 @@
       body: JSON.stringify(payload),
       signal: controller.signal
     })
-      .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+      // El servidor puede devolver HTML (página de error de gunicorn si el worker
+      // se reinicia o agota su timeout). Se lee como texto y se intenta parsear:
+      // así nunca se propaga un "Unexpected token '<'" al usuario.
+      .then(function (r) {
+        return r.text().then(function (t) {
+          try {
+            return { status: r.status, body: JSON.parse(t) };
+          } catch (e) {
+            return { status: r.status, body: null };
+          }
+        });
+      })
       .then(function (res) {
         clearTimeout(abortTimer);
         stopLoading();
+        if (res.body === null) {
+          showError("La auditoría tardó demasiado o el servidor se reinició — " +
+                    "vuelve a intentarlo.");
+          return;
+        }
         if (!res.body.ok) {
           showError(res.body.error || "Error desconocido (HTTP " + res.status + ")");
           return;
@@ -176,7 +194,7 @@
         clearTimeout(abortTimer);
         stopLoading();
         if (err.name === "AbortError") {
-          showError("La auditoría ha tardado más de 120 segundos y se ha cancelado. " +
+          showError("La auditoría ha tardado más de 170 segundos y se ha cancelado. " +
                     "Vuelve a intentarlo en un momento.");
         } else if (/failed to fetch|networkerror|load failed/i.test(err.message || "")) {
           showError("El servidor está iniciando. Espera 30 segundos y vuelve a intentarlo.");

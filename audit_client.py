@@ -55,6 +55,12 @@ FAST_HEADERS = dict(BROWSER_HEADERS, **{
 })
 TIMEOUT = 25
 TIMEOUT_SHORT = 10  # peticiones a terceros (competidores, directorios): no bloquear la auditoría
+# Presupuesto de tiempo de la auditoría completa: el worker de gunicorn muere a
+# los 120s, así que las descargas secundarias van acotadas. Un recurso que no
+# responde degrada (se ignora) en vez de agotar el timeout y matar al worker.
+OPT_TIMEOUT = 15     # robots.txt y llms.txt (servidores lentos tardan >10s)
+SITEMAP_TIMEOUT = 12  # cada sitemap (un sitemap_index lento tarda ~9s)
+SITEMAP_MAX = 4       # nº máx. de sitemaps descargados
 
 # API gratuita de PageSpeed Insights (obtener key en Google Cloud Console)
 PAGESPEED_API_KEY = os.environ.get("PAGESPEED_API_KEY", "").strip()
@@ -693,13 +699,15 @@ def _fetch_sitemap_urls(site):
     if not sitemaps:
         sitemaps = [site["root"] + "/sitemap.xml"]
     urls, seen, queue = [], set(), list(sitemaps)
-    while queue and len(seen) < 5:
+    # Acotado (3 sitemaps × SITEMAP_TIMEOUT) para no agotar el timeout del worker:
+    # un sitemap que no responde degrada a "sin urls", no bloquea la auditoría.
+    while queue and len(seen) < SITEMAP_MAX:
         sm = queue.pop(0)
         if sm in seen:
             continue
         seen.add(sm)
         try:
-            r = requests.get(sm, headers=HEADERS, timeout=TIMEOUT_SHORT)
+            r = requests.get(sm, headers=HEADERS, timeout=SITEMAP_TIMEOUT)
         except requests.exceptions.RequestException:
             continue
         if r.status_code != 200:
@@ -847,22 +855,25 @@ def check_pagespeed(a, site, ctx):
               "No configurada — define la variable PAGESPEED_API_KEY (gratis en Google Cloud) "
               "para medir el rendimiento real (hasta 8 pts)")
         return
+    # La API de PageSpeed puede tardar bastante en webs lentas. Se le da margen
+    # (60s < --timeout 120 de gunicorn) y, si aun así no responde, se degrada:
+    # el bloque queda a 0/0 para que NO penalice el score en vez de matar al worker.
     try:
         r = requests.get(PAGESPEED_ENDPOINT, params={
             "url": site["url"], "strategy": "mobile", "key": PAGESPEED_API_KEY,
-        }, timeout=15)
+        }, timeout=60)
         data = r.json()
     except (requests.exceptions.RequestException, ValueError):
-        a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "warn", 0, 8,
-              "No se pudo consultar PageSpeed (red o cuota agotada) — reinténtalo más tarde")
+        a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "warn", 0, 0,
+              "PageSpeed no respondió — score calculado sin ese bloque")
         return
 
     lh = data.get("lighthouseResult", {}) or {}
     perf = ((lh.get("categories", {}) or {}).get("performance") or {}).get("score")
     if perf is None:
         msg = (data.get("error", {}) or {}).get("message", "respuesta sin puntuación")
-        a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "warn", 0, 8,
-              "PageSpeed no devolvió puntuación: %s" % str(msg)[:100])
+        a.add("pagespeed", "pagespeed_score", "Rendimiento móvil (PageSpeed)", "warn", 0, 0,
+              "PageSpeed no respondió — score calculado sin ese bloque (%s)" % str(msg)[:80])
         return
 
     score = round(perf * 100)
@@ -2226,7 +2237,7 @@ def run_audit_full(url, nombre, sector, ciudad, out_dir="reports", html_manual=N
     print("→ Auditando %s (%s, %s, %s)%s…" % (url, nombre, sector, ciudad,
                                               " [HTML directo]" if html_manual else ""))
 
-    site = fetch_site(url, html_manual)
+    site = fetch_site(url, html_manual, opt_timeout=OPT_TIMEOUT)
     print("✓ HTML descargado (%d KB) · robots.txt: %s · llms.txt: %s" % (
         len(site["html"]) // 1024,
         "sí" if site["robots"] is not None else "no",
