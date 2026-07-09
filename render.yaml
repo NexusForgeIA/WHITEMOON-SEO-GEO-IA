@@ -3,10 +3,13 @@ services:
     name: whitemoon-auditoria-geo-ia
     runtime: python
     buildCommand: pip install -r requirements.txt
-    # --timeout 120: la auditoría hace varias llamadas de red (PageSpeed, sitemap,
+    # --timeout 180: la auditoría hace varias llamadas de red (PageSpeed, sitemap,
     # búsquedas best-effort). Con el timeout por defecto de 30s gunicorn mataba al
     # worker y devolvía una página HTML de error (de ahí el "Unexpected token '<'").
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --graceful-timeout 30
+    # Presupuesto medido: ~80s en una web lenta + hasta 60s de PageSpeed = ~140s.
+    # OJO: este startCommand solo se aplica si el servicio es blueprint-managed.
+    # Si se creó desde el dashboard, hay que cambiar allí el Start Command.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 180 --graceful-timeout 30
     envVars:
       - key: AUDIT_PASSWORD
         sync: false
