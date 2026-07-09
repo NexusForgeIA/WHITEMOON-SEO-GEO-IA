@@ -74,13 +74,19 @@ LOCALBUSINESS_HINTS = (
 # BLOQUE 1 — FETCH
 # ──────────────────────────────────────────────────────────────────────────────
 
-def fetch_site(url, html_manual=None):
+def fetch_site(url, html_manual=None, timeout=TIMEOUT, opt_timeout=None):
     """Descarga la página principal, robots.txt y llms.txt.
 
     Con html_manual (HTML pegado a mano cuando la web bloquea el fetch,
     p. ej. Cloudflare/403) se omite la descarga de la página principal y
     se analiza ese HTML; robots.txt y llms.txt se intentan igualmente.
+
+    opt_timeout acota las descargas secundarias (robots.txt, llms.txt); si es
+    None usa el mismo timeout que la página principal. El modo rápido lo baja
+    para que un robots/llms que no responde no dispare el tiempo total.
     """
+    if opt_timeout is None:
+        opt_timeout = timeout
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
 
@@ -89,11 +95,11 @@ def fetch_site(url, html_manual=None):
         html = html_manual.encode("utf-8")
         return {"url": url, "root": root, "html": html,
                 "soup": BeautifulSoup(html, "html.parser"),
-                "robots": _fetch_optional(root + "/robots.txt"),
-                "llms": _fetch_optional(root + "/llms.txt")}
+                "robots": _fetch_optional(root + "/robots.txt", timeout=opt_timeout),
+                "llms": _fetch_optional(root + "/llms.txt", timeout=opt_timeout)}
 
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
+        resp = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
     except requests.exceptions.SSLError:
         _die("Error SSL al conectar con %s.\n   Sugerencia: el certificado es inválido o ha caducado. "
              "Prueba con http:// o revisa el certificado del cliente." % url)
@@ -126,8 +132,8 @@ def fetch_site(url, html_manual=None):
         path = path.rsplit("/", 1)[0]
     root = "{0}://{1}{2}".format(parsed.scheme, parsed.netloc, path.rstrip("/"))
 
-    robots_txt = _fetch_optional(root + "/robots.txt")
-    llms_txt = _fetch_optional(root + "/llms.txt")
+    robots_txt = _fetch_optional(root + "/robots.txt", timeout=opt_timeout)
+    llms_txt = _fetch_optional(root + "/llms.txt", timeout=opt_timeout)
 
     # Parsear desde bytes: BeautifulSoup detecta el charset del documento
     # (evita mojibake cuando el servidor no declara charset en las cabeceras)
@@ -2106,6 +2112,84 @@ def _render_fix(w, check):
     w("  - **Por qué importa:** %s" % porque)
     w("  - **Tu competencia que sí lo tiene:** %s" % pierde)
     w("  - **Cómo corregirlo:** %s" % como)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MODO RÁPIDO — señales para el Radar de prospección (sin efectos secundarios)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Firmas habituales de widgets de chat / chatbot embebidos en el HTML.
+# Heurística best effort: nombres de scripts, dominios de proveedores y clases
+# CSS de los widgets de chat más comunes + el botón flotante de WhatsApp.
+CHAT_WIDGET_SIGNS = (
+    "intercom", "drift.com", "driftt", "tawk.to", "crisp.chat", "crisp.im",
+    "tidio", "zdassets", "zopim", "zendesk", "livechatinc", "livechat",
+    "hs-scripts", "hubspot", "freshchat", "freshworks", "landbot",
+    "manychat", "chatlio", "smartsupp", "botpress", "dialogflow",
+    "kommunicate", "gorgias-chat", "userlike", "olark", "purechat",
+    "chatra", "helpcrunch", "jivosite", "jivochat", "callbell",
+    "respond.io", "watsonassistant", "voiceflow", "widget-chat",
+    "chat-widget", "chatbot", "chat-bot", "livechat-widget",
+    "wa.me/", "api.whatsapp.com", "whatsapp-widget", "whatsapp-chat",
+    "floating-whatsapp", "btn-whatsapp", "boton-whatsapp",
+)
+
+
+def _detecta_chatbot(html_bytes):
+    """Heurística best effort: ¿hay un widget de chat/chatbot en el HTML?"""
+    try:
+        text = html_bytes.decode("utf-8", "ignore").lower()
+    except (AttributeError, UnicodeDecodeError):
+        text = str(html_bytes).lower()
+    return any(sign in text for sign in CHAT_WIDGET_SIGNS)
+
+
+def audit_signals(url, timeout=10):
+    """MODO RÁPIDO para el Radar de prospección.
+
+    Reutiliza el mismo motor de scoring (idénticos checks y puntos) pero solo
+    con las comprobaciones que se calculan sobre la página ya descargada. NO
+    ejecuta PageSpeed (rule 2), ni autoridad/directorios/competidores (hacen
+    peticiones extra a sitemap/Google, lentas y pesadas). SIN escribir informe
+    y SIN ningún efecto secundario. Pensado para llamadas en lote.
+
+    El score se normaliza a base 100 sobre las áreas realmente evaluadas: así
+    sigue en 0-100 aunque se omita el bloque de PageSpeed y los de terceros.
+
+    Devuelve: {"score": <0-100>, "senales": {...}}.
+    Lanza AuditError si la URL es inválida o la web está caída.
+    """
+    # Página principal hasta `timeout`; robots/llms acotados para que un
+    # recurso que cuelga no dispare el tiempo total por encima de ~15s.
+    site = fetch_site(url, timeout=timeout, opt_timeout=4)
+
+    audit = Audit()
+    ctx = {"nombre": "", "sector": "", "ciudad": "", "url": site["url"]}
+    # Solo checks on-page (sin red extra): mismos que puntúan en el informe
+    # salvo pagespeed/autoridad/directorios, que quedan fuera del modo rápido.
+    check_meta_tags(audit, site, ctx)
+    check_structure(audit, site)
+    check_schema(audit, site, ctx)
+    check_robots(audit, site, ctx)
+    check_geo(audit, site, ctx)
+    check_aeo(audit, site, ctx)
+    check_cro(audit, site, ctx)
+
+    total_pts, total_max = audit.area_score(
+        "meta", "estructura", "schema", "robots", "geo", "aeo", "cro")
+    score = round(total_pts / total_max * 100) if total_max else 0
+
+    by_id = {c["id"]: c for c in audit.checks}
+    return {
+        "score": score,
+        "senales": {
+            # no https (o el motor habría muerto ya si el certificado está roto)
+            "sin_ssl": urlparse(site["url"]).scheme != "https",
+            "sin_chatbot": not _detecta_chatbot(site["html"]),
+            "sin_llms_txt": by_id.get("llms_txt", {}).get("status") != "ok",
+            "sin_schema": by_id.get("jsonld", {}).get("status") != "ok",
+        },
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
