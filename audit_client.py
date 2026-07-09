@@ -45,12 +45,19 @@ LOCALBUSINESS_HINTS = (
 # BLOQUE 1 — FETCH
 # ──────────────────────────────────────────────────────────────────────────────
 
-def fetch_site(url):
-    """Descarga la página principal, robots.txt y llms.txt."""
+def fetch_site(url, timeout=TIMEOUT, opt_timeout=None):
+    """Descarga la página principal, robots.txt y llms.txt.
+
+    opt_timeout acota las descargas secundarias (robots.txt, llms.txt); si es
+    None usa el mismo timeout que la página principal. El modo rápido lo baja
+    para que un robots/llms que no responde no dispare el tiempo total.
+    """
+    if opt_timeout is None:
+        opt_timeout = timeout
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
+        resp = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
     except requests.exceptions.SSLError:
         _die("Error SSL al conectar con %s.\n   Sugerencia: el certificado es inválido o ha caducado. "
              "Prueba con http:// o revisa el certificado del cliente." % url)
@@ -75,8 +82,8 @@ def fetch_site(url):
     final_url = resp.url
     root = "{0}://{1}".format(urlparse(final_url).scheme, urlparse(final_url).netloc)
 
-    robots_txt = _fetch_optional(root + "/robots.txt")
-    llms_txt = _fetch_optional(root + "/llms.txt")
+    robots_txt = _fetch_optional(root + "/robots.txt", timeout=opt_timeout)
+    llms_txt = _fetch_optional(root + "/llms.txt", timeout=opt_timeout)
 
     # Parsear desde bytes: BeautifulSoup detecta el charset del documento
     # (evita mojibake cuando el servidor no declara charset en las cabeceras)
@@ -85,9 +92,9 @@ def fetch_site(url):
             "robots": robots_txt, "llms": llms_txt}
 
 
-def _fetch_optional(url):
+def _fetch_optional(url, timeout=TIMEOUT):
     try:
-        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        r = requests.get(url, headers=HEADERS, timeout=timeout)
         if r.status_code == 200 and "<html" not in r.text[:500].lower():
             return r.text
     except requests.exceptions.RequestException:
@@ -1216,6 +1223,82 @@ def _explicacion_llm(audit, ctx, nombre, sector, ciudad):
 # ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MODO RÁPIDO — señales para el Radar de prospección (sin efectos secundarios)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Firmas habituales de widgets de chat / chatbot embebidos en el HTML.
+# Heurística best effort: nombres de scripts, dominios de proveedores y clases
+# CSS de los widgets de chat más comunes + el botón flotante de WhatsApp.
+CHAT_WIDGET_SIGNS = (
+    "intercom", "drift.com", "driftt", "tawk.to", "crisp.chat", "crisp.im",
+    "tidio", "zdassets", "zopim", "zendesk", "livechatinc", "livechat",
+    "hs-scripts", "hubspot", "freshchat", "freshworks", "landbot",
+    "manychat", "chatlio", "smartsupp", "botpress", "dialogflow",
+    "kommunicate", "gorgias-chat", "userlike", "olark", "purechat",
+    "chatra", "helpcrunch", "jivosite", "jivochat", "callbell",
+    "respond.io", "watsonassistant", "voiceflow", "widget-chat",
+    "chat-widget", "chatbot", "chat-bot", "livechat-widget",
+    "wa.me/", "api.whatsapp.com", "whatsapp-widget", "whatsapp-chat",
+    "floating-whatsapp", "btn-whatsapp", "boton-whatsapp",
+)
+
+
+def _detecta_chatbot(html_bytes):
+    """Heurística best effort: ¿hay un widget de chat/chatbot en el HTML?"""
+    try:
+        text = html_bytes.decode("utf-8", "ignore").lower()
+    except (AttributeError, UnicodeDecodeError):
+        text = str(html_bytes).lower()
+    return any(sign in text for sign in CHAT_WIDGET_SIGNS)
+
+
+def audit_signals(url, timeout=10):
+    """MODO RÁPIDO para el Radar de prospección.
+
+    Reutiliza el MISMO motor de scoring que run_audit_full (idénticos checks,
+    idéntica fórmula) pero SIN escribir informe, SIN PageSpeed y SIN ningún
+    efecto secundario. Pensado para llamadas en lote: responde en segundos.
+
+    Devuelve: {"score": <0-100>, "senales": {...}}.
+    Lanza AuditError si la URL es inválida o la web está caída.
+    """
+    # Página principal hasta `timeout`; robots/llms acotados para que un
+    # recurso que cuelga no dispare el tiempo total por encima de ~15s.
+    site = fetch_site(url, timeout=timeout, opt_timeout=4)
+
+    audit = Audit()
+    ctx = {"nombre": "", "sector": "", "ciudad": ""}
+    check_meta_tags(audit, site, ctx)
+    check_structure(audit, site)
+    check_schema(audit, site, ctx)
+    check_robots(audit, site, ctx)
+    check_geo(audit, site, ctx)
+    check_aeo(audit, site, ctx)
+
+    # Mismo cálculo que render_report(). Se normaliza a base 100 por si el
+    # máximo del motor cambiara (p. ej. al añadir un bloque de PageSpeed que
+    # aquí no se ejecuta): así el score sigue en 0-100 sin ese bloque.
+    seo_pts, seo_max = audit.area_score("meta", "estructura", "schema", "robots")
+    geo_pts, geo_max = audit.area_score("geo")
+    aeo_pts, aeo_max = audit.area_score("aeo")
+    total_pts = seo_pts + geo_pts + aeo_pts
+    total_max = seo_max + geo_max + aeo_max
+    score = round(total_pts / total_max * 100) if total_max else 0
+
+    by_id = {c["id"]: c for c in audit.checks}
+    return {
+        "score": score,
+        "senales": {
+            # no https (o el motor habría muerto ya si el certificado está roto)
+            "sin_ssl": urlparse(site["url"]).scheme != "https",
+            "sin_chatbot": not _detecta_chatbot(site["html"]),
+            "sin_llms_txt": by_id.get("llms_txt", {}).get("status") != "ok",
+            "sin_schema": by_id.get("jsonld", {}).get("status") != "ok",
+        },
+    }
+
 
 def run_audit_full(url, nombre, sector, ciudad, out_dir="reports"):
     """Ejecuta la auditoría completa, escribe el informe y devuelve un dict
