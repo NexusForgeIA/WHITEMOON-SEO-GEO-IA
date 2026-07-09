@@ -11,6 +11,7 @@ Cambiar password:  variable de entorno AUDIT_PASSWORD
 """
 
 import hashlib
+import hmac
 import io
 import os
 import re
@@ -29,6 +30,14 @@ REPORTS_DIR = BASE / "reports"
 # En import (no solo en __main__) para que exista también bajo gunicorn
 REPORTS_DIR.mkdir(exist_ok=True)
 PASSWORD = os.environ.get("AUDIT_PASSWORD", "whitemoon2026")
+
+# Token opcional del Radar de prospección. Si RADAR_TOKEN está definido,
+# /audit-json exige la cabecera X-Radar-Token con ese valor. Si no lo está,
+# el endpoint sigue abierto (retrocompatible con el worker actual).
+RADAR_TOKEN = os.environ.get("RADAR_TOKEN", "").strip()
+
+# Commit desplegado (Render lo inyecta). Sirve para verificar qué versión corre.
+GIT_COMMIT = os.environ.get("RENDER_GIT_COMMIT", "").strip() or "local"
 
 # Supabase: captura de leads del informe completo (freemium). La clave anon es
 # pública por diseño (RLS permite solo INSERT anónimo en leads_web).
@@ -75,8 +84,9 @@ FILENAME_RE = re.compile(r"^audit-[A-Za-z0-9.-]+-\d{4}-\d{2}-\d{2}\.md$")
 @app.before_request
 def require_login():
     # El endpoint público de auditoría gratuita y el del Radar de prospección
-    # (worker en lote, sin sesión de navegador) no requieren login.
-    if request.endpoint in ("login", "static", "audit_public", "audit_json"):
+    # (worker en lote, sin sesión de navegador) no requieren login. /audit-json
+    # se protege, si procede, con RADAR_TOKEN dentro de la propia vista.
+    if request.endpoint in ("login", "static", "audit_public", "audit_json", "version"):
         return None
     if not session.get("auth"):
         if request.method == "POST" or request.path.startswith("/audit"):
@@ -128,6 +138,12 @@ def index():
     return render_template("index.html", sectores=SECTORES)
 
 
+@app.get("/version")
+def version():
+    """Commit desplegado. Permite verificar qué versión corre en producción."""
+    return jsonify(ok=True, commit=GIT_COMMIT[:12], radar_token=bool(RADAR_TOKEN))
+
+
 @app.post("/audit-json")
 def audit_json():
     """Radar de prospección — MODO RÁPIDO.
@@ -137,9 +153,16 @@ def audit_json():
       OK    → {"ok": true, "score": <0-100>, "senales": {...}}
       Fallo → {"ok": false, "error": "..."}
 
+    Si RADAR_TOKEN está definido en el entorno, exige la cabecera X-Radar-Token
+    con ese valor y responde 401 si falta o no coincide. Si no lo está, abierto.
+
     Reutiliza el motor de scoring existente. Sin PageSpeed, sin renders y CERO
     efectos secundarios: no envía WhatsApp, no guarda leads, no escribe informes.
     """
+    if RADAR_TOKEN and not hmac.compare_digest(
+            request.headers.get("X-Radar-Token", ""), RADAR_TOKEN):
+        return jsonify(ok=False, error="Token inválido o ausente."), 401
+
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
 
