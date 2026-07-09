@@ -22,7 +22,7 @@ from flask import (Flask, abort, jsonify, redirect, render_template, request,
                    send_file, session, url_for)
 import markdown as md_lib
 
-from audit_client import AuditError, run_audit_full
+from audit_client import AuditError, audit_signals, run_audit_full
 
 BASE = Path(__file__).resolve().parent
 REPORTS_DIR = BASE / "reports"
@@ -74,8 +74,9 @@ FILENAME_RE = re.compile(r"^audit-[A-Za-z0-9.-]+-\d{4}-\d{2}-\d{2}\.md$")
 
 @app.before_request
 def require_login():
-    # El endpoint público de auditoría gratuita no requiere login.
-    if request.endpoint in ("login", "static", "audit_public"):
+    # El endpoint público de auditoría gratuita y el del Radar de prospección
+    # (worker en lote, sin sesión de navegador) no requieren login.
+    if request.endpoint in ("login", "static", "audit_public", "audit_json"):
         return None
     if not session.get("auth"):
         if request.method == "POST" or request.path.startswith("/audit"):
@@ -125,6 +126,38 @@ def logout():
 @app.get("/")
 def index():
     return render_template("index.html", sectores=SECTORES)
+
+
+@app.post("/audit-json")
+def audit_json():
+    """Radar de prospección — MODO RÁPIDO.
+
+    Body: {"url": "https://..."}
+    Respuesta (siempre HTTP 200; el worker trata ok:false como fallo suave):
+      OK    → {"ok": true, "score": <0-100>, "senales": {...}}
+      Fallo → {"ok": false, "error": "..."}
+
+    Reutiliza el motor de scoring existente. Sin PageSpeed, sin renders y CERO
+    efectos secundarios: no envía WhatsApp, no guarda leads, no escribe informes.
+    """
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip()
+
+    if not url:
+        return jsonify(ok=False, error="Falta el campo 'url'.")
+    if not re.match(r"^(https?://)?[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}", url) \
+            and "localhost" not in url:
+        return jsonify(ok=False, error="La URL no parece válida (ej: https://cliente.es).")
+
+    try:
+        result = audit_signals(url)
+    except AuditError as e:
+        # URL inválida o web caída → fallo suave para el worker
+        return jsonify(ok=False, error=str(e))
+    except Exception as e:
+        return jsonify(ok=False, error="Error inesperado durante el análisis: %s" % e)
+
+    return jsonify(ok=True, score=result["score"], senales=result["senales"])
 
 
 @app.post("/audit")
