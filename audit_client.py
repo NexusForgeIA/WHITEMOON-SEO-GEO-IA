@@ -39,6 +39,20 @@ BROWSER_HEADERS = {
     "Accept-Language": "es-ES,es;q=0.9",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
+# Cabeceras de navegador completas para el Radar de prospección: muchas webs
+# están tras Cloudflare y devuelven 403 al User-Agent "WhiteMoon-Audit" desde
+# IPs de datacenter (Render). Un set de cabeceras realista reduce esos bloqueos.
+FAST_HEADERS = dict(BROWSER_HEADERS, **{
+    "Accept-Encoding": "gzip, deflate",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Sec-CH-UA": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    "Sec-CH-UA-Mobile": "?0",
+    "Sec-CH-UA-Platform": '"Windows"',
+})
 TIMEOUT = 25
 TIMEOUT_SHORT = 10  # peticiones a terceros (competidores, directorios): no bloquear la auditoría
 
@@ -74,7 +88,7 @@ LOCALBUSINESS_HINTS = (
 # BLOQUE 1 — FETCH
 # ──────────────────────────────────────────────────────────────────────────────
 
-def fetch_site(url, html_manual=None, timeout=TIMEOUT, opt_timeout=None):
+def fetch_site(url, html_manual=None, timeout=TIMEOUT, opt_timeout=None, headers=None):
     """Descarga la página principal, robots.txt y llms.txt.
 
     Con html_manual (HTML pegado a mano cuando la web bloquea el fetch,
@@ -84,9 +98,14 @@ def fetch_site(url, html_manual=None, timeout=TIMEOUT, opt_timeout=None):
     opt_timeout acota las descargas secundarias (robots.txt, llms.txt); si es
     None usa el mismo timeout que la página principal. El modo rápido lo baja
     para que un robots/llms que no responde no dispare el tiempo total.
+
+    headers permite usar cabeceras de navegador (FAST_HEADERS) para reducir los
+    403 de Cloudflare; si es None usa las cabeceras por defecto (WhiteMoon-Audit).
     """
     if opt_timeout is None:
         opt_timeout = timeout
+    if headers is None:
+        headers = HEADERS
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
 
@@ -95,11 +114,11 @@ def fetch_site(url, html_manual=None, timeout=TIMEOUT, opt_timeout=None):
         html = html_manual.encode("utf-8")
         return {"url": url, "root": root, "html": html,
                 "soup": BeautifulSoup(html, "html.parser"),
-                "robots": _fetch_optional(root + "/robots.txt", timeout=opt_timeout),
-                "llms": _fetch_optional(root + "/llms.txt", timeout=opt_timeout)}
+                "robots": _fetch_optional(root + "/robots.txt", timeout=opt_timeout, headers=headers),
+                "llms": _fetch_optional(root + "/llms.txt", timeout=opt_timeout, headers=headers)}
 
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
+        resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
     except requests.exceptions.SSLError:
         _die("Error SSL al conectar con %s.\n   Sugerencia: el certificado es inválido o ha caducado. "
              "Prueba con http:// o revisa el certificado del cliente." % url)
@@ -132,8 +151,8 @@ def fetch_site(url, html_manual=None, timeout=TIMEOUT, opt_timeout=None):
         path = path.rsplit("/", 1)[0]
     root = "{0}://{1}{2}".format(parsed.scheme, parsed.netloc, path.rstrip("/"))
 
-    robots_txt = _fetch_optional(root + "/robots.txt", timeout=opt_timeout)
-    llms_txt = _fetch_optional(root + "/llms.txt", timeout=opt_timeout)
+    robots_txt = _fetch_optional(root + "/robots.txt", timeout=opt_timeout, headers=headers)
+    llms_txt = _fetch_optional(root + "/llms.txt", timeout=opt_timeout, headers=headers)
 
     # Parsear desde bytes: BeautifulSoup detecta el charset del documento
     # (evita mojibake cuando el servidor no declara charset en las cabeceras)
@@ -142,9 +161,9 @@ def fetch_site(url, html_manual=None, timeout=TIMEOUT, opt_timeout=None):
             "robots": robots_txt, "llms": llms_txt}
 
 
-def _fetch_optional(url, timeout=TIMEOUT):
+def _fetch_optional(url, timeout=TIMEOUT, headers=None):
     try:
-        r = requests.get(url, headers=HEADERS, timeout=timeout)
+        r = requests.get(url, headers=headers or HEADERS, timeout=timeout)
         if r.status_code == 200 and "<html" not in r.text[:500].lower():
             return r.text
     except requests.exceptions.RequestException:
@@ -2161,7 +2180,8 @@ def audit_signals(url, timeout=10):
     """
     # Página principal hasta `timeout`; robots/llms acotados para que un
     # recurso que cuelga no dispare el tiempo total por encima de ~15s.
-    site = fetch_site(url, timeout=timeout, opt_timeout=4)
+    # Cabeceras de navegador para reducir los 403 de Cloudflare desde Render.
+    site = fetch_site(url, timeout=timeout, opt_timeout=4, headers=FAST_HEADERS)
 
     audit = Audit()
     ctx = {"nombre": "", "sector": "", "ciudad": "", "url": site["url"]}
