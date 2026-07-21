@@ -61,6 +61,8 @@ TIMEOUT_SHORT = 10  # peticiones a terceros (competidores, directorios): no bloq
 OPT_TIMEOUT = 15     # robots.txt y llms.txt (servidores lentos tardan >10s)
 SITEMAP_TIMEOUT = 12  # cada sitemap (un sitemap_index lento tarda ~9s)
 SITEMAP_MAX = 4       # nº máx. de sitemaps descargados
+BLOG_VERIFY_MAX = 6      # nº máx. de URLs de blog que verificamos por HTTP
+BLOG_VERIFY_TIMEOUT = 6  # timeout por artículo (acota el tiempo total del worker)
 
 # API gratuita de PageSpeed Insights (obtener key en Google Cloud Console)
 PAGESPEED_API_KEY = os.environ.get("PAGESPEED_API_KEY", "").strip()
@@ -1085,19 +1087,88 @@ def check_competidores(audit, site, ctx):
     }
 
 
+BLOG_PATTERNS = ("/blog/", "/noticias/", "/articulos/", "/articulo/", "/post/", "/posts/")
+
+
+def _is_blog_article(url):
+    """True si la URL es un artículo (hay slug tras /blog/, /noticias/…), no el
+    índice vacío /blog/. Evita contar la portada del blog como "artículo"."""
+    path = urlparse(url).path.lower()
+    for p in BLOG_PATTERNS:
+        i = path.find(p)
+        if i != -1:
+            return bool(path[i + len(p):].strip("/"))  # hay algo tras /blog/ → artículo
+    return False
+
+
+# Marcadores de página "no encontrada" en <title>/<h1> (soft-404: HTTP 200 pero
+# la página dice que el contenido no existe). Fragmentos sin tildes para ser
+# robustos ante mojibake de codificación (p. ej. "PÃ¡gina no encontrada").
+NOT_FOUND_MARKERS = (
+    "no encontrada", "no encontrado", "not found", "no existe",
+    "page not found", "error 404", "404 not found", "contenido no disponible",
+)
+
+
+def _looks_not_found(html):
+    """True si el <title> o el primer <h1> son de una página de error/no-encontrada.
+    Solo mira title y h1 (no el cuerpo) para no confundir un "404" citado dentro
+    de un artículo legítimo con una página de error real."""
+    parts = []
+    for tag in ("title", "h1"):
+        m = re.search(r"<%s[^>]*>(.*?)</%s>" % (tag, tag), html, re.I | re.S)
+        if m:
+            parts.append(re.sub(r"<[^>]+>", " ", m.group(1)).lower())
+    head = " ".join(parts)
+    return any(mark in head for mark in NOT_FOUND_MARKERS)
+
+
+def _blog_url_valid(url, host):
+    """True si el artículo existe de verdad: HTTP 200 en el mismo dominio, sin
+    redirección a la home y sin ser un soft-404 (página "no encontrada" servida
+    con estado 200). Descarta URLs muertas o fantasma que el sitemap arrastra
+    pero ya no existen — la causa real de los falsos positivos."""
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=BLOG_VERIFY_TIMEOUT,
+                         allow_redirects=True)
+    except requests.exceptions.RequestException:
+        return False
+    if r.status_code != 200:
+        return False  # 404/410/redirección a error
+    final = urlparse(r.url)
+    if final.netloc.lower().replace("www.", "") != host:
+        return False  # redirigido fuera del dominio
+    if not final.path.strip("/"):
+        return False  # redirigido a la home → soft-404
+    if _looks_not_found(r.text):
+        return False  # HTTP 200 pero la página dice "no encontrada" (soft-404)
+    return True
+
+
 def check_contenido(site, ctx):
-    """Inventario de contenido: páginas en sitemap y artículos de blog."""
+    """Inventario de contenido: páginas en sitemap y artículos de blog.
+
+    Un artículo solo cuenta como blog si su URL (a) tiene slug real tras /blog/
+    y (b) resuelve HTTP 200 en el mismo dominio (no 404, no redirección a la
+    home ni fuera del sitio). Así evitamos los falsos positivos por URLs /blog/
+    fantasma que quedan en el sitemap pero ya no existen. Sin ningún artículo
+    válido → "Blog: No"; nunca se inventa un número.
+    """
     try:
         urls = set(_fetch_sitemap_urls(site))
-        blog_pat = ("/blog/", "/noticias/", "/articulos/", "/articulo/", "/post/", "/posts/")
-        blog_urls = [u for u in urls if any(p in u.lower() for p in blog_pat)]
+        host = urlparse(site["root"]).netloc.lower().replace("www.", "")
+        candidates = [u for u in urls if _is_blog_article(u)]
+        # Verifica por HTTP hasta BLOG_VERIFY_MAX (acota el tiempo del worker).
+        valid = sum(1 for u in candidates[:BLOG_VERIFY_MAX] if _blog_url_valid(u, host))
         ctx["contenido"] = {
             "total": len(urls),
-            "has_blog": len(blog_urls) > 0,
-            "blog_count": len(blog_urls),
+            "has_blog": valid > 0,
+            "blog_count": valid,
+            # Mínimo verificado: había más candidatos de los que comprobamos.
+            "blog_min": len(candidates) > BLOG_VERIFY_MAX and valid == BLOG_VERIFY_MAX,
         }
     except Exception:
-        ctx["contenido"] = {"total": 0, "has_blog": False, "blog_count": 0}
+        ctx["contenido"] = {"total": 0, "has_blog": False, "blog_count": 0, "blog_min": False}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1897,7 +1968,12 @@ def render_report(audit, site, ctx):
         w("### Inventario de contenido")
         w("")
         if cont["total"]:
-            blog = ("Sí (%d artículos)" % cont["blog_count"]) if cont["has_blog"] else "No"
+            if cont["has_blog"]:
+                n = cont["blog_count"]
+                plus = "+" if cont.get("blog_min") else ""
+                blog = "Sí (%d%s artículo%s)" % (n, plus, "" if n == 1 else "s")
+            else:
+                blog = "No"
             w("**%d páginas indexadas** (sitemap) · **Blog:** %s" % (cont["total"], blog))
         else:
             w("No se pudo leer el sitemap.xml para inventariar el contenido.")
