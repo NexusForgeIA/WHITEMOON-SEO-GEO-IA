@@ -209,25 +209,16 @@ El informe completo incluye además: análisis técnico check a check (con
 en cada error), estado de acceso de cada bot de IA, la sección **Evidencia en Motores
 de IA** con las queries exactas para que el cliente compruebe en ChatGPT /
 Grok / Perplexity que no aparece, el plan de acción priorizado con puntos
-ganados por acción y la tabla de implementación con precios de WhiteMoon.
+ganados por acción y la hoja de ruta a 6 meses.
+
+El informe es **solo auditoría**: hallazgos, scores, acciones priorizadas y
+recomendaciones técnicas. No incluye precios ni oferta de servicios.
 
 ## Política de confidencialidad
 
 **Los informes son confidenciales.** La carpeta `reports/` está en
 `.gitignore` y **nunca se commitea**: contiene datos de clientes y análisis
 comerciales. Solo se versiona el `.gitkeep`.
-
-## Precio del servicio
-
-**Auditoría GEO IA — 899€** · Solicitudes: whitemoon.es/auditoria-geo-ia
-
-| Implementación posterior | Precio |
-|--------------------------|--------|
-| Schema LocalBusiness/FAQPage | 200-400€ |
-| llms.txt + señales GEO | 150-300€ |
-| Rediseño web con IA integrada | Pack Core — 1.800€ |
-| Agente IA de voz | Pack Orion IA Agent — 999€ |
-| RAG sobre documentación | Pack Core RAG — 3.200€ |
 
 ---
 
