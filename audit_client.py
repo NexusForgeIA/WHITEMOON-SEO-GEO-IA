@@ -1527,43 +1527,8 @@ EFFORT_RANK = {"Bajo": 0, "Medio": 1, "Alto": 2}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Productos WhiteMoon
+# Clasificación por sector (para los checks de directorios sectoriales)
 # ──────────────────────────────────────────────────────────────────────────────
-
-# Ticket medio por sector (clave: sector tal como se selecciona en el formulario)
-SECTOR_TICKETS = {
-    "clínica dental": 800,
-    "taller mecánico": 350,
-    "gestoría": 400,
-    "centro de estética": 250,
-    "hostelería": 180,
-    "inmobiliaria": 3500,
-    "farmacia": 120,
-    "despacho de abogados": 600,
-    "podología": 180,
-    "academia": 300,
-    "gimnasio": 500,
-    "hotel": 1200,
-    "e-commerce": 150,
-    "fontanería": 300,
-    "servicio técnico": 280,
-    "transporte y logística": 1500,
-    "marketing y publicidad": 2000,
-    "muebles y decoración": 900,
-    "bodega y vinos": 1800,
-    "psicología y coaching": 350,
-    "psiquiatría": 500,
-    "formación y academia": 300,
-    "otro": 400,
-}
-
-TICKET_DEFAULT = 400
-
-
-def ticket_sector(sector):
-    """Ticket medio del sector seleccionado (comparación sin acentos/mayúsculas)."""
-    normalizado = {_norm(k): v for k, v in SECTOR_TICKETS.items()}
-    return normalizado.get(_norm(sector), TICKET_DEFAULT)
 
 SECTOR_PATTERNS = [
     ("dental", ["dental", "dentist", "odont"]),
@@ -1591,93 +1556,6 @@ def sector_key(sector):
         if any(p in s for p in pats):
             return key
     return "otro"
-
-
-PRODUCTOS = {
-    "spark": {
-        "nombre": "Spark",
-        "setup": "499€", "mes": "199€/mes",
-        "url": "whitemoon.es/spark/",
-        "porque": "Ideal para negocios de {sector} que quieren dar el primer paso en {ciudad}: "
-                  "visibilidad para la IA y atención por chat, rápido de implantar y con las "
-                  "bases GEO/AEO incluidas.",
-        "incluye": [
-            "Chatbot IA entrenado con la información del negocio",
-            "Captura de leads 24/7 con aviso inmediato",
-            "Implementación GEO/AEO básica (schema, llms.txt, señales locales)",
-            "Panel de conversaciones y métricas",
-        ],
-    },
-    "orion": {
-        "nombre": "Orion IA Agent",
-        "setup": "999€", "mes": "199€/mes",
-        "url": "whitemoon.es/orion-agent/",
-        "porque": "Ideal para negocios de {sector} que quieren atender clientes 24/7 sin "
-                  "operador humano: Orion IA captura leads automáticamente y gestiona citas "
-                  "en español natural.",
-        "incluye": [
-            "Agente de voz 24/7 en español natural",
-            "Captura nombre, teléfono y motivo automáticamente",
-            "Notificación inmediata a tu WhatsApp",
-            "Gestión de citas sin intervención humana",
-            "Operativo en 5-7 días · Sin permanencia",
-        ],
-    },
-    "core": {
-        "nombre": "Core",
-        "setup": "1.800€", "mes": "opcional (mantenimiento)",
-        "url": "whitemoon.es/core/",
-        "porque": "Ideal para negocios de {sector} que necesitan una base digital sólida en "
-                  "{ciudad}: web nueva con GEO/AEO de serie y Orion IA integrado desde el "
-                  "primer día.",
-        "incluye": [
-            "Web nueva optimizada GEO/AEO desde el diseño",
-            "Schema completo, llms.txt y señales de geolocalización",
-            "Chat IA (Orion IA) integrado en la web",
-            "Analítica de visibilidad en buscadores y motores de IA",
-        ],
-    },
-    "core_rag": {
-        "nombre": "Core RAG",
-        "setup": "3.200€", "mes": "opcional (mantenimiento)",
-        "url": "whitemoon.es/core-rag/",
-        "porque": "Ideal para negocios de {sector} que responden las mismas preguntas cada "
-                  "día: Core RAG convierte su documentación en respuestas instantáneas, "
-                  "fiables y citables.",
-        "incluye": [
-            "IA que responde con la documentación real del negocio (RAG)",
-            "Base de conocimiento privada y actualizable",
-            "Respuestas consistentes para clientes y equipo",
-            "Integración en web y canales de atención",
-        ],
-    },
-}
-
-# Producto por sector cuando la base técnica ya es buena (score > 75)
-PRODUCTO_POR_SECTOR = {
-    "dental": "orion", "estetica": "orion", "podologia": "orion", "gimnasio": "orion",
-    "gestoria": "core_rag", "abogados": "core_rag", "academia": "core_rag",
-    "psicologia": "core_rag", "psiquiatria": "core_rag",
-    "hosteleria": "spark", "hotel": "spark",
-    "inmobiliaria": "core",
-    "taller": "orion", "fontaneria": "orion",
-    "ecommerce": "spark", "farmacia": "spark",
-    "otro": "core",
-}
-
-
-def productos_recomendados(score, sector):
-    """Orion IA Agent siempre primero; el segundo según sector y score."""
-    skey = sector_key(sector)
-    if skey in ("gestoria", "abogados", "academia", "psicologia", "psiquiatria"):
-        segundo = "core_rag"
-    elif score < 50:
-        segundo = "spark"
-    else:
-        segundo = PRODUCTO_POR_SECTOR.get(skey, "core")
-    if segundo == "orion":
-        segundo = "core_rag"
-    return ["orion", segundo]
 
 
 def plan_de_accion(audit):
@@ -2144,53 +2022,6 @@ def render_report(audit, site, ctx):
     w("---")
     w("")
 
-    # ── Soluciones WhiteMoon ──
-    w("## 💡 SOLUCIONES WHITEMOON RECOMENDADAS")
-    w("*(Productos específicos para %s en %s)*" % (sector, ciudad))
-    w("")
-    for key in productos_recomendados(score, sector):
-        p = PRODUCTOS[key]
-        w("### %s" % p["nombre"])
-        w("**Setup:** %s · **Mensualidad:** %s · **Sin permanencia**" % (p["setup"], p["mes"]))
-        w("**Por qué para tu negocio:** %s" % p["porque"].format(sector=sector, ciudad=ciudad))
-        w("**Incluye:**")
-        for feat in p["incluye"]:
-            w("- %s" % feat)
-        w("")
-        w("**Implementación incluida — sin necesidad de programador.**")
-        w("")
-        w("→ Más información: %s" % p["url"])
-        w("")
-    w("¿Tienes preguntas? Solicita una consulta gratuita de 15 minutos: whitemoon.es/auditoria-ia")
-    w("")
-
-    # ── Oportunidad Meta Ads (solo si la web no tiene píxel de Meta) ──
-    sin_pixel = any(c["id"] == "meta_pixel" and c["status"] == "warn" for c in audit.checks)
-    if sin_pixel:
-        w("---")
-        w("")
-        w("## OPORTUNIDAD: CAPTACIÓN CON META ADS")
-        w("")
-        w("Tu negocio no tiene Meta Ads activo. Tu competencia puede estar captando")
-        w("clientes en Facebook e Instagram mientras tú no apareces.")
-        w("")
-        w("**Simulación orientativa (presupuesto 300€/mes en Meta Ads):**")
-        w("- Alcance estimado: 15.000-40.000 personas/mes en tu zona")
-        w("- Leads estimados: 20-50 leads/mes")
-        w("- Coste por lead estimado: 6-15€")
-        w("")
-        w("**Pack Ads WhiteMoon — 599€/mes**")
-        w("- Gestión completa de Meta Ads (Facebook + Instagram)")
-        w("- Creatividades incluidas")
-        w("- Sin permanencia")
-        w("- Inversión en plataforma: a cargo del cliente (mínimo recomendado 300€/mes)")
-        w("")
-        w("Contacto: 643 199 580 | comercial@whitemoon.es")
-        w("")
-
-    w("---")
-    w("")
-
     # ── Verificación en 30 días ──
     w("## 📅 VERIFICACIÓN EN 30 DÍAS")
     w("")
@@ -2200,7 +2031,7 @@ def render_report(audit, site, ctx):
     w("---")
     w("")
     w("*Auditoría GEO IA realizada por WhiteMoon · whitemoon.es*")
-    w("*¿Quieres implementar estas mejoras? Solicitar propuesta sin compromiso: whitemoon.es/auditoria-geo-ia*")
+    w("*¿Quieres ayuda para implementarlo? Escríbenos a comercial@whitemoon.es*")
     w("")
 
     return "\n".join(L), score
